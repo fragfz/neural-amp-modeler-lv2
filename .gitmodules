@@ -3,4 +3,4 @@
 	url = https://github.com/lv2/lv2
 [submodule "deps/NeuralAudio"]
 	path = deps/NeuralAudio
-	url = https://github.com/fps/NeuralAudio.git
+	url = https://github.com/fps/NeuralAudio
