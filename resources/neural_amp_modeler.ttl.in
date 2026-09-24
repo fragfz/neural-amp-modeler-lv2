@@ -59,8 +59,7 @@ A large collection of models is available at https://www.tone3000.com
 
 	# Control
 	lv2:port [
-		a atom:AtomPort, lv2:Input
-Port;
+		a atom:AtomPort, lv2:InputPort;
 		atom:bufferType atom:Sequence;
 		atom:supports patch:Message;
 		lv2:designation lv2:control;
