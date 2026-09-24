@@ -14,10 +14,16 @@
 @prefix work:  <http://lv2plug.in/ns/ext/worker#>.
 @prefix mod: <http://moddevices.com/ns/mod#>.
 
-<@NAM_LV2_ID@#model>
+<@NAM_LV2_ID@#model1>
 	a lv2:Parameter;
 	mod:fileTypes "nam,nammodel,json,aidax,aidadspmodel";
-	rdfs:label "Neural Model";
+	rdfs:label "NAM 1 Model";
+	rdfs:range atom:Path.
+
+<@NAM_LV2_ID@#model2>
+	a lv2:Parameter;
+	mod:fileTypes "nam,nammodel,json,aidax,aidadspmodel";
+	rdfs:label "NAM 2 Model";
 	rdfs:range atom:Path.
 
 <@NAM_LV2_ID@>
@@ -39,7 +45,8 @@
 	opts:supportedOption <http://lv2plug.in/ns/ext/buf-size#maxBlockLength>;
 
 	rdfs:comment """
-LV2 plugin for neural network machine learning guitar amplifier simulation models
+LV2 plugin with two chained neural network machine learning guitar amplifier
+simulation models: Input > NAM 1 (pre amp) > NAM 2 (power amp) > Output.
 
 Models supported:
   Neural Amp Modeler (NAM): https://github.com/sdatkinson/neural-amp-modeler
@@ -48,7 +55,7 @@ Models supported:
 A large collection of models is available at https://www.tone3000.com
 """;
 
-	patch:writable <@NAM_LV2_ID@#model>;
+	patch:writable <@NAM_LV2_ID@#model1>, <@NAM_LV2_ID@#model2>;
 
 	# Control
 	lv2:port [
@@ -87,8 +94,8 @@ Port;
 	lv2:port [
 		a lv2:ControlPort, lv2:InputPort;
 		lv2:index 4;
-		lv2:symbol "input_level";
-		lv2:name "Input Lvl";
+		lv2:symbol "input_level1";
+		lv2:name "NAM1 Input Lvl";
 		lv2:default 0.0;
 		lv2:minimum -20.0;
 		lv2:maximum 20.0;
@@ -96,8 +103,8 @@ Port;
 	], [
 		a lv2:ControlPort, lv2:InputPort;
 		lv2:index 5;
-		lv2:symbol "output_level";
-		lv2:name "Output Lvl";
+		lv2:symbol "output_level1";
+		lv2:name "NAM1 Output Lvl";
 		lv2:default 0.0;
 		lv2:minimum -20.0;
 		lv2:maximum 20.0;
@@ -105,6 +112,24 @@ Port;
 	], [
 		a lv2:ControlPort, lv2:InputPort;
 		lv2:index 6;
+		lv2:symbol "input_level2";
+		lv2:name "NAM2 Input Lvl";
+		lv2:default 0.0;
+		lv2:minimum -20.0;
+		lv2:maximum 20.0;
+		units:unit units:db;
+	], [
+		a lv2:ControlPort, lv2:InputPort;
+		lv2:index 7;
+		lv2:symbol "output_level2";
+		lv2:name "NAM2 Output Lvl";
+		lv2:default 0.0;
+		lv2:minimum -20.0;
+		lv2:maximum 20.0;
+		units:unit units:db;
+	], [
+		a lv2:ControlPort, lv2:InputPort;
+		lv2:index 8;
 		lv2:symbol "quality_scale";
 		lv2:name "Quality";
 		lv2:default 1.0;

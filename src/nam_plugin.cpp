@@ -15,7 +15,16 @@ namespace NAM {
 	Plugin::Plugin()
 	{
 		// prevent allocations on the audio thread
-		currentModelPath.reserve(MAX_FILE_NAME + 1);
+		for (uint32_t slot = 0; slot < kNumSlots; ++slot)
+		{
+			currentModelPaths[slot].reserve(MAX_FILE_NAME + 1);
+		}
+
+		bufA.reserve(maxBufferSize);
+		bufB.reserve(maxBufferSize);
+
+		bufA.resize(maxBufferSize);
+		bufB.resize(maxBufferSize);
 
 		bypassThresholdLinear = powf(10, BYPASS_DB_THRESHOLD * 0.05f);
 
@@ -38,7 +47,10 @@ namespace NAM {
 
 	Plugin::~Plugin()
 	{
-		delete currentModel;
+		for (uint32_t slot = 0; slot < kNumSlots; ++slot)
+		{
+			delete currentModels[slot];
+		}
 	}
 
 	bool Plugin::initialize(double sampleRate, const LV2_Feature* const* features) noexcept
@@ -93,6 +105,8 @@ namespace NAM {
 		uris.units_frame = map->map(map->handle, LV2_UNITS__frame);
 
 		uris.model_Path = map->map(map->handle, MODEL_URI);
+		uris.model1_Path = map->map(map->handle, MODEL1_URI);
+		uris.model2_Path = map->map(map->handle, MODEL2_URI);
 
 		if (options != nullptr)
 			options_set(this, options);
@@ -111,8 +125,11 @@ namespace NAM {
 				auto msg = static_cast<const LV2LoadModelMsg*>(data);
 				auto nam = static_cast<NAM::Plugin*>(instance);
 
+				if (msg->slot >= kNumSlots)
+					return LV2_WORKER_ERR_UNKNOWN;
+
 				NeuralAudio::NeuralModel* model = nullptr;
-				LV2SwitchModelMsg response = { kWorkTypeSwitch, {}, {} };
+				LV2SwitchModelMsg response = { kWorkTypeSwitch, msg->slot, {}, {} };
 				LV2_Worker_Status result = LV2_WORKER_SUCCESS;
 
 				try
@@ -181,23 +198,28 @@ namespace NAM {
 		auto msg = static_cast<const LV2SwitchModelMsg*>(data);
 		auto nam = static_cast<NAM::Plugin*>(instance);
 
+		if (msg->slot >= kNumSlots)
+			return LV2_WORKER_ERR_UNKNOWN;
+
+		const uint32_t slot = msg->slot;
+
 		// prepare reply for deleting old model
-		LV2FreeModelMsg reply = { kWorkTypeFree, nam->currentModel };
+		LV2FreeModelMsg reply = { kWorkTypeFree, nam->currentModels[slot] };
 
 		// swap current model with new one
-		nam->currentModel = msg->model;
-		nam->currentModelPath = msg->path;
-		assert(nam->currentModelPath.capacity() >= MAX_FILE_NAME + 1);
+		nam->currentModels[slot] = msg->model;
+		nam->currentModelPaths[slot] = msg->path;
+		assert(nam->currentModelPaths[slot].capacity() >= MAX_FILE_NAME + 1);
 
-		if (nam->currentModel != nullptr)
+		if (nam->currentModels[slot] != nullptr)
 		{
-			int receptiveFieldSize = nam->currentModel->GetReceptiveFieldSize();
+			int receptiveFieldSize = nam->currentModels[slot]->GetReceptiveFieldSize();
 
 			if (receptiveFieldSize > -1)
 			{
 				// A newly loaded model is prewarmed to have a silent sample history
-				nam->silentSamples = receptiveFieldSize;
-				nam->smartBypassed = true;
+				nam->silentSamples[slot] = receptiveFieldSize;
+				nam->smartBypassed[slot] = true;
 			}
 		}
 
@@ -205,7 +227,7 @@ namespace NAM {
 		nam->schedule->schedule_work(nam->schedule->handle, sizeof(reply), &reply);
 
 		// report change to host/ui
-		nam->write_current_path();
+		nam->write_current_path(slot);
 
 		return LV2_WORKER_SUCCESS;
 	}
@@ -215,6 +237,13 @@ namespace NAM {
 		maxBufferSize = size;
 
 		loader.SetDefaultMaxAudioBufferSize(size);
+
+		// grow (never shrink) the staging buffers so process() never allocates
+		if ((int)bufA.size() < size)
+		{
+			bufA.resize(size);
+			bufB.resize(size);
+		}
 	}
 
 	void Plugin::process(uint32_t n_samples) noexcept
@@ -235,7 +264,8 @@ namespace NAM {
 				const auto obj = reinterpret_cast<LV2_Atom_Object*>(&event->body);
 				if (obj->body.otype == uris.patch_Get)
 				{
-					write_current_path();
+					write_current_path(0);
+					write_current_path(1);
 				}
 				else if (obj->body.otype == uris.patch_Set)
 				{
@@ -248,13 +278,24 @@ namespace NAM {
 					                    0);
 
 					if (property && property->type == uris.atom_URID &&
-						((const LV2_Atom_URID*)property)->body == uris.model_Path &&
 						file_path && file_path->type == uris.atom_Path &&
 						file_path->size > 0 && file_path->size < MAX_FILE_NAME)
 					{
-						LV2LoadModelMsg msg = { kWorkTypeLoad, {} };
-						memcpy(msg.path, file_path + 1, file_path->size);
-						schedule->schedule_work(schedule->handle, sizeof(msg), &msg);
+						uint32_t slot = kNumSlots;
+						if (((const LV2_Atom_URID*)property)->body == uris.model1_Path)
+							slot = 0;
+						else if (((const LV2_Atom_URID*)property)->body == uris.model2_Path)
+							slot = 1;
+						else if (((const LV2_Atom_URID*)property)->body == uris.model_Path)
+							slot = 0;	// legacy model parameter maps to slot 0
+						if (slot < kNumSlots)
+						{
+							LV2LoadModelMsg msg = { kWorkTypeLoad, slot, {} };
+
+							memcpy(msg.path, file_path + 1, file_path->size);
+
+							schedule->schedule_work(schedule->handle, sizeof(msg), &msg);
+						}
 					}
 				}
 			}
@@ -262,130 +303,202 @@ namespace NAM {
 
 		float level;
 
-		float modelInputAdjustmentDB = 0;
+		float model1InputAdjustmentDB = 0;
+		float model1LoudnessAdjustmentDB = 0;
+		float model2InputAdjustmentDB = 0;
+		float model2LoudnessAdjustmentDB = 0;
 
-		if (currentModel != nullptr)
+		if (currentModels[0] != nullptr)
 		{
-			if (*(ports.quality_scale) != currentModel->GetQualityScaleFactor())
+			if (*(ports.quality_scale) != currentModels[0]->GetQualityScaleFactor())
 			{
-				currentModel->SetQualityScaleFactor(*(ports.quality_scale));
+				currentModels[0]->SetQualityScaleFactor(*(ports.quality_scale));
 			}
 
-			modelInputAdjustmentDB = currentModel->GetRecommendedInputDBAdjustment();
-
-#ifdef SMART_BYPASS_ENABLED
-			int receptiveFieldSamples = currentModel->GetReceptiveFieldSize();
-
-			if (receptiveFieldSamples > -1)
-			{
-				for (unsigned int i = 0; i < n_samples; i++)
-				{
-					if (abs(ports.audio_in[i]) <= bypassThresholdLinear)
-					{
-						silentSamples++;
-					}
-					else
-					{
-						silentSamples = 0;
-					}
-				}
-
-				if (silentSamples >= (uint32_t)receptiveFieldSamples)
-				{
-					silentSamples = (uint32_t)receptiveFieldSamples;	// Prevent silentSamples growing and eventually overflowing uint32
-
-					if (smartBypassed)
-					{
-						for (unsigned int i = 0; i < n_samples; i++)
-						{
-							ports.audio_out[i] = ports.audio_in[i];
-						}
-
-						return;
-					}
-
-					smartBypassed = true; // If we aren't already, we'll be bypassed on the next process call
-				}
-				else
-					smartBypassed = false;
-			}
-#endif
+			model1InputAdjustmentDB = currentModels[0]->GetRecommendedInputDBAdjustment();
+			model1LoudnessAdjustmentDB = currentModels[0]->GetRecommendedOutputDBAdjustment();
 		}
 
-		// convert input level from db
-		float desiredInputLevel = powf(10, (*(ports.input_level) + modelInputAdjustmentDB) * 0.05f);
-
-		if (fabs(desiredInputLevel - inputLevel) > SMOOTH_EPSILON)
+		if (currentModels[1] != nullptr)
 		{
-			level = inputLevel;
+			if (*(ports.quality_scale) != currentModels[1]->GetQualityScaleFactor())
+			{
+				currentModels[1]->SetQualityScaleFactor(*(ports.quality_scale));
+			}
+
+			model2InputAdjustmentDB = currentModels[1]->GetRecommendedInputDBAdjustment();
+			model2LoudnessAdjustmentDB = currentModels[1]->GetRecommendedOutputDBAdjustment();
+		}
+
+		// --- Stage 1: input level 1 (audio_in -> bufA) ---
+
+		float desiredInputLevel = powf(10, (*(ports.input_level1) + model1InputAdjustmentDB) * 0.05f);
+
+		if (fabs(desiredInputLevel - inputLevel[0]) > SMOOTH_EPSILON)
+		{
+			level = inputLevel[0];
+
 			for (unsigned int i = 0; i < n_samples; i++)
 			{
 				// do very basic smoothing
 				level = (.99f * level) + (.01f * desiredInputLevel);
 
-				ports.audio_out[i] = ports.audio_in[i] * level;
+				bufA[i] = ports.audio_in[i] * level;
 			}
 
-			inputLevel = level;
+			inputLevel[0] = level;
 		}
 		else
 		{
-			level = inputLevel = desiredInputLevel;
+			level = inputLevel[0] = desiredInputLevel;
 
 			for (unsigned int i = 0; i < n_samples; i++)
 			{
-				ports.audio_out[i] = ports.audio_in[i] * level;
+				bufA[i] = ports.audio_in[i] * level;
 			}
 		}
 
-		float modelLoudnessAdjustmentDB = 0;
+		// --- Stage 2: NAM 1 (bufA in place) ---
 
-		if (currentModel != nullptr)
+		bool bypass1 = false;
+
+#ifdef SMART_BYPASS_ENABLED
+		if (currentModels[0] != nullptr)
 		{
-			currentModel->Process(ports.audio_out, ports.audio_out, n_samples);
+			int receptiveFieldSamples = currentModels[0]->GetReceptiveFieldSize();
 
-			modelLoudnessAdjustmentDB = currentModel->GetRecommendedOutputDBAdjustment();
+			if (receptiveFieldSamples > -1)
+			{
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					if (abs(bufA[i]) <= bypassThresholdLinear)
+					{
+						silentSamples[0]++;
+					}
+					else
+					{
+						silentSamples[0] = 0;
+					}
+				}
+
+				if (silentSamples[0] >= (uint32_t)receptiveFieldSamples)
+				{
+					silentSamples[0] = (uint32_t)receptiveFieldSamples;	// Prevent silentSamples growing and eventually overflowing uint32
+
+					bypass1 = smartBypassed[0];
+					smartBypassed[0] = true;	// If we aren't already, we'll be bypassed on the next process call
+				}
+				else
+					smartBypassed[0] = false;
+			}
+		}
+#endif
+
+		if (currentModels[0] != nullptr && !bypass1)
+		{
+			currentModels[0]->Process(bufA.data(), bufA.data(), n_samples);
 		}
 
-		// Convert output level from db
-		float desiredOutputLevel = powf(10, (*(ports.output_level) + modelLoudnessAdjustmentDB) * 0.05f);
+		// --- Stage 3: output level 1 + input level 2 (bufA -> bufB) ---
 
-		if (fabs(desiredOutputLevel - outputLevel) > SMOOTH_EPSILON)
+		float desiredOut1Level = powf(10, (*(ports.output_level1) + model1LoudnessAdjustmentDB) * 0.05f);
+		float desiredIn2Level = powf(10, (*(ports.input_level2) + model2InputAdjustmentDB) * 0.05f);
+
+		if (fabs(desiredOut1Level - outputLevel[0]) > SMOOTH_EPSILON || fabs(desiredIn2Level - inputLevel[1]) > SMOOTH_EPSILON)
 		{
-			level = outputLevel;
+			float level1 = outputLevel[0];
+			float level2 = inputLevel[1];
+			for (unsigned int i = 0; i < n_samples; i++)
+			{
+				// do very basic smoothing
+				level1 = (.99f * level1) + (.01f * desiredOut1Level);
+				level2 = (.99f * level2) + (.01f * desiredIn2Level);
+
+				bufB[i] = bufA[i] * level1 * level2;
+			}
+
+			outputLevel[0] = level1;
+			inputLevel[1] = level2;
+		}
+		else
+		{
+			float level1 = outputLevel[0] = desiredOut1Level;
+			float level2 = inputLevel[1] = desiredIn2Level;
+
+			for (unsigned int i = 0; i < n_samples; i++)
+			{
+				bufB[i] = bufA[i] * level1 * level2;
+			}
+		}
+
+		// --- Stage 4: NAM 2 (bufB in place) ---
+
+		bool bypass2 = false;
+
+#ifdef SMART_BYPASS_ENABLED
+		if (currentModels[1] != nullptr)
+		{
+			int receptiveFieldSamples = currentModels[1]->GetReceptiveFieldSize();
+
+			if (receptiveFieldSamples > -1)
+			{
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					if (abs(bufB[i]) <= bypassThresholdLinear)
+					{
+						silentSamples[1]++;
+					}
+					else
+					{
+						silentSamples[1] = 0;
+					}
+				}
+
+				if (silentSamples[1] >= (uint32_t)receptiveFieldSamples)
+				{
+					silentSamples[1] = (uint32_t)receptiveFieldSamples;	// Prevent silentSamples growing and eventually overflowing uint32
+
+					bypass2 = smartBypassed[1];
+					smartBypassed[1] = true;	// If we aren't already, we'll be bypassed on the next process call
+				}
+				else
+					smartBypassed[1] = false;
+			}
+		}
+#endif
+
+		if (currentModels[1] != nullptr && !bypass2)
+		{
+			currentModels[1]->Process(bufB.data(), bufB.data(), n_samples);
+		}
+
+		// --- Stage 5: output level 2 (bufB -> audio_out) ---
+
+		float desiredOutputLevel = powf(10, (*(ports.output_level2) + model2LoudnessAdjustmentDB) * 0.05f);
+
+		if (fabs(desiredOutputLevel - outputLevel[1]) > SMOOTH_EPSILON)
+		{
+			level = outputLevel[1];
 
 			for (unsigned int i = 0; i < n_samples; i++)
 			{
 				// do very basic smoothing
 				level = (.99f * level) + (.01f * desiredOutputLevel);
 
-				ports.audio_out[i] = ports.audio_out[i] * outputLevel;
+				ports.audio_out[i] = bufB[i] * level;
 			}
 
-			outputLevel = level;
+			outputLevel[1] = level;
 		}
 		else
 		{
-			level = outputLevel = desiredOutputLevel;
+			level = outputLevel[1] = desiredOutputLevel;
 
 			for (unsigned int i = 0; i < n_samples; i++)
 			{
-				ports.audio_out[i] = ports.audio_out[i] * level;
+				ports.audio_out[i] = bufB[i] * level;
 			}
 		}
-
-		//float dcBlockCoefficient = 1 - (220.0 / sampleRate);
-
-		//for (unsigned int i = 0; i < n_samples; i++)
-		//{
-		//	float dcInput = ports.audio_out[i];
-
-		//	// dc blocker
-		//	ports.audio_out[i] = ports.audio_out[i] - prevDCInput + dcBlockCoefficient * prevDCOutput;
-
-		//	prevDCInput = dcInput;
-		//	prevDCOutput = ports.audio_out[i];
-		//}
 	}
 
 	uint32_t Plugin::options_get(LV2_Handle, LV2_Options_Option*)
@@ -417,7 +530,7 @@ namespace NAM {
 
 		lv2_log_trace(&nam->logger, "Saving state\n");
 
-		if (!nam->currentModel)
+		if (!nam->currentModels[0] && !nam->currentModels[1])
 		{
 			return LV2_STATE_SUCCESS;
 		}
@@ -431,97 +544,133 @@ namespace NAM {
 			return LV2_STATE_ERR_NO_FEATURE;
 		}
 
-		// Map absolute sample path to an abstract state path
-		char* apath = map_path->abstract_path(map_path->handle, nam->currentModelPath.c_str());
+		const LV2_URID modelPathKeys[kNumSlots] = { nam->uris.model1_Path, nam->uris.model2_Path };
 
-		store(handle, nam->uris.model_Path, apath, strlen(apath) + 1, nam->uris.atom_Path,
-			LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
-
-		LV2_State_Free_Path* free_path = (LV2_State_Free_Path *)lv2_features_data(features, LV2_STATE__freePath);
-
-		if (free_path != nullptr)
+		for (uint32_t slot = 0; slot < kNumSlots; ++slot)
 		{
-			free_path->free_path(free_path->handle, apath);
-		}
-		else
-		{
+			if (!nam->currentModels[slot])
+			{
+				continue;
+			}
+
+			// Map absolute sample path to an abstract state path
+			char* apath = map_path->abstract_path(map_path->handle, nam->currentModelPaths[slot].c_str());
+
+			store(handle, modelPathKeys[slot], apath, strlen(apath) + 1, nam->uris.atom_Path,
+				LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+
+			LV2_State_Free_Path* free_path = (LV2_State_Free_Path *)lv2_features_data(features, LV2_STATE__freePath);
+
+			if (free_path != nullptr)
+			{
+				free_path->free_path(free_path->handle, apath);
+			}
+			else
+			{
 #ifndef _WIN32	// Can't free host-allocated memory on plugin side under Windows
-			free(apath);
+				free(apath);
 #endif
+			}
 		}
 
 		return LV2_STATE_SUCCESS;
 	}
 
-	LV2_State_Status Plugin::restore(LV2_Handle instance, LV2_State_Retrieve_Function retrieve, LV2_State_Handle handle, 
+	LV2_State_Status Plugin::restore(LV2_Handle instance, LV2_State_Retrieve_Function retrieve, LV2_State_Handle handle,
 		uint32_t flags, const LV2_Feature* const* features)
 	{
 		auto nam = static_cast<NAM::Plugin*>(instance);
 
-		// Get model_Path from state
 		size_t      size     = 0;
 		uint32_t    type     = 0;
 		uint32_t    valflags = 0;
-		const void* value = retrieve(handle, nam->uris.model_Path, &size, &type, &valflags);
 
-		lv2_log_trace(&nam->logger, "Restoring model '%s'\n", (const char*)value);
+		const LV2_URID modelPathKeys[kNumSlots] = { nam->uris.model1_Path, nam->uris.model2_Path };
 
-		NAM::LV2LoadModelMsg msg = { NAM::kWorkTypeLoad, {} };
+		bool haveSlot[kNumSlots] = { false, false };
+		const void* values[kNumSlots] = { nullptr, nullptr };
+		uint32_t types[kNumSlots] = { 0, 0 };
+
+		// Get model path for each slot. Fall back to the legacy single-model
+		// state key, restored into slot 0.
+		values[0] = retrieve(handle, modelPathKeys[0], &size, &types[0], &valflags);
+		haveSlot[0] = values[0] != nullptr && types[0] == nam->uris.atom_Path;
+
+		values[1] = retrieve(handle, modelPathKeys[1], &size, &types[1], &valflags);
+		haveSlot[1] = values[1] != nullptr && types[1] == nam->uris.atom_Path;
+
+		if (!haveSlot[0] && !haveSlot[1])
+		{
+			values[0] = retrieve(handle, nam->uris.model_Path, &size, &types[0], &valflags);
+			haveSlot[0] = values[0] != nullptr && types[0] == nam->uris.atom_Path;
+		}
 
 		LV2_State_Status result = LV2_STATE_SUCCESS;
 
-		// Check if a path is set
-		if (!value || (type != nam->uris.atom_Path))
+		for (uint32_t slot = 0; slot < kNumSlots && result == LV2_STATE_SUCCESS; ++slot)
 		{
-			msg.path[0] = '\0';
-		}
-		else
-		{
-			LV2_State_Map_Path* map_path = (LV2_State_Map_Path*)lv2_features_data(features, LV2_STATE__mapPath);
-
-			if (map_path == nullptr)
+			if (!haveSlot[slot])
 			{
-				lv2_log_error(&nam->logger, "LV2_STATE__mapPath unsupported by host\n");
-
-				return LV2_STATE_ERR_NO_FEATURE;
+				continue;
 			}
 
-			// Map abstract state path to absolute path
-			char* path = map_path->absolute_path(map_path->handle, (const char *)value);
+			lv2_log_trace(&nam->logger, "Restoring model %u: '%s'\n", slot + 1, (const char*)values[slot]);
 
-			size_t pathLen = strlen(path);
+			NAM::LV2LoadModelMsg msg = { NAM::kWorkTypeLoad, slot, {} };
 
-			if (pathLen >= MAX_FILE_NAME)
+			// Check if a path is set
+			if (!values[slot] || (types[slot] != nam->uris.atom_Path))
 			{
-				lv2_log_error(&nam->logger, "Model path is too long (max %u chars)\n", MAX_FILE_NAME);
-
-				result = LV2_STATE_ERR_UNKNOWN;
+				msg.path[0] = '\0';
 			}
 			else
 			{
-				memcpy(msg.path, path, pathLen);
-			}
+				LV2_State_Map_Path* map_path = (LV2_State_Map_Path*)lv2_features_data(features, LV2_STATE__mapPath);
 
-			LV2_State_Free_Path* free_path = (LV2_State_Free_Path*)lv2_features_data(features, LV2_STATE__freePath);
+				if (map_path == nullptr)
+				{
+					lv2_log_error(&nam->logger, "LV2_STATE__mapPath unsupported by host\n");
 
-			if (free_path != nullptr)
-			{
-				free_path->free_path(free_path->handle, path);
-			}
-			else
-			{
+					return LV2_STATE_ERR_NO_FEATURE;
+				}
+
+				// Map abstract state path to absolute path
+				char* path = map_path->absolute_path(map_path->handle, (const char *)values[slot]);
+
+				size_t pathLen = strlen(path);
+
+				if (pathLen >= MAX_FILE_NAME)
+				{
+					lv2_log_error(&nam->logger, "Model path is too long (max %u chars)\n", MAX_FILE_NAME);
+
+					result = LV2_STATE_ERR_UNKNOWN;
+				}
+				else
+				{
+					memcpy(msg.path, path, pathLen);
+				}
+
+				LV2_State_Free_Path* free_path = (LV2_State_Free_Path *)lv2_features_data(features, LV2_STATE__freePath);
+
+				if (free_path != nullptr)
+				{
+					free_path->free_path(free_path->handle, path);
+				}
+				else
+				{
 #ifndef _WIN32	// Can't free host-allocated memory on plugin side under Windows
-				free(path);
+					free(path);
 #endif
+				}
 			}
-		}
 
-		if (result == LV2_STATE_SUCCESS)
-		{
-			// Schedule model to be loaded by the provided worker
-			nam->schedule->schedule_work(nam->schedule->handle, sizeof(msg), &msg);
+			if (result == LV2_STATE_SUCCESS)
+			{
+				// Schedule model to be loaded by the provided worker
+				nam->schedule->schedule_work(nam->schedule->handle, sizeof(msg), &msg);
 
-			nam->currentModelPath = msg.path;
+				nam->currentModelPaths[slot] = msg.path;
+			}
 		}
 
 		return result;

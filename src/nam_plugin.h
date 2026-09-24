@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <random>
 #include <string_view>
+#include <string>
+#include <vector>
 
 // LV2
 #include <lv2/core/lv2.h>
@@ -24,10 +26,14 @@
 #include <NeuralAudio/NeuralModel.h>
 
 #define PlUGIN_URI "http://github.com/fragfz/neural-amp-modeler-dual-chain"
-#define MODEL_URI PlUGIN_URI "#model"
+#define MODEL1_URI PlUGIN_URI "#model1"
+#define MODEL2_URI PlUGIN_URI "#model2"
+#define MODEL_URI PlUGIN_URI "#model"	// legacy state key, restored into slot 0
 
 namespace NAM {
 	static constexpr unsigned int MAX_FILE_NAME = 1024;
+
+	static constexpr uint32_t kNumSlots = 2;
 
 	enum LV2WorkType {
 		kWorkTypeLoad,
@@ -37,11 +43,13 @@ namespace NAM {
 
 	struct LV2LoadModelMsg {
 		LV2WorkType type;
+		uint32_t slot;
 		char path[MAX_FILE_NAME];
 	};
 
 	struct LV2SwitchModelMsg {
 		LV2WorkType type;
+		uint32_t slot;
 		char path[MAX_FILE_NAME];
 		NeuralAudio::NeuralModel* model;
 	};
@@ -58,8 +66,10 @@ namespace NAM {
 			LV2_Atom_Sequence* notify;
 			const float* audio_in;
 			float* audio_out;
-			float* input_level;
-			float* output_level;
+			float* input_level1;
+			float* output_level1;
+			float* input_level2;
+			float* output_level2;
 			float* quality_scale;
 		};
 
@@ -72,10 +82,8 @@ namespace NAM {
 		LV2_Worker_Schedule* schedule = nullptr;
 
 		NeuralAudio::NeuralModelLoader loader;
-		NeuralAudio::NeuralModel* currentModel = nullptr;
-		std::string currentModelPath;
-		float prevDCInput = 0;
-		float prevDCOutput = 0;
+		NeuralAudio::NeuralModel* currentModels[kNumSlots] = { nullptr, nullptr };
+		std::string currentModelPaths[kNumSlots];
 
 		Plugin();
 		~Plugin();
@@ -85,7 +93,7 @@ namespace NAM {
 		void activate() noexcept;
 		void process(uint32_t n_samples) noexcept;
 
-		void write_current_path();
+		void write_current_path(uint32_t slot);
 
 		static uint32_t options_get(LV2_Handle instance, LV2_Options_Option* options);
 		static uint32_t options_set(LV2_Handle instance, const LV2_Options_Option* options);
@@ -113,6 +121,8 @@ namespace NAM {
 			LV2_URID patch_value;
 			LV2_URID units_frame;
 			LV2_URID model_Path;
+			LV2_URID model1_Path;
+			LV2_URID model2_Path;
 		};
 
 		URIs uris = {};
@@ -120,11 +130,15 @@ namespace NAM {
 		LV2_Atom_Forge atom_forge = {};
 		LV2_Atom_Forge_Frame sequence_frame;
 
-		float inputLevel = 0;
-		float outputLevel = 0;
+		// internal staging buffers (bufA: NAM1 stage, bufB: NAM2 stage)
+		std::vector<float> bufA;
+		std::vector<float> bufB;
+
+		float inputLevel[kNumSlots] = { 0, 0 };
+		float outputLevel[kNumSlots] = { 0, 0 };
 		int32_t maxBufferSize = 512;
 		float bypassThresholdLinear = 0;
-		uint32_t silentSamples = 0;
-		bool smartBypassed = true;
+		uint32_t silentSamples[kNumSlots] = { 0, 0 };
+		bool smartBypassed[kNumSlots] = { true, true };
 	};
 }
