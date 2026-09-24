@@ -71,6 +71,8 @@ namespace NAM {
 			float* input_level2;
 			float* output_level2;
 			float* quality_scale;
+			float* enable1;
+			float* enable2;
 		};
 
 		Ports ports = {};

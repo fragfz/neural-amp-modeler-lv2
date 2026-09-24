@@ -400,7 +400,7 @@ namespace NAM {
 		}
 #endif
 
-		if (currentModels[0] != nullptr && !bypass1)
+		if (currentModels[0] != nullptr && *(ports.enable1) > 0.5f && !bypass1)
 		{
 			currentModels[0]->Process(bufA.data(), bufA.data(), n_samples);
 		}
@@ -408,7 +408,7 @@ namespace NAM {
 		// --- Stage 3: DC blocker + output level 1 + input level 2 (bufA -> bufB) ---
 
 		// DC blocking only makes sense when NAM 1 actually ran
-		const bool useDC = currentModels[0] != nullptr;
+		const bool useDC = currentModels[0] != nullptr && *(ports.enable1) > 0.5f;
 
 		float desiredOut1Level = powf(10, (*(ports.output_level1) + model1LoudnessAdjustmentDB) * 0.05f);
 		float desiredIn2Level = powf(10, (*(ports.input_level2) + model2InputAdjustmentDB) * 0.05f);
@@ -502,7 +502,7 @@ namespace NAM {
 		}
 #endif
 
-		if (currentModels[1] != nullptr && !bypass2)
+		if (currentModels[1] != nullptr && *(ports.enable2) > 0.5f && !bypass2)
 		{
 			currentModels[1]->Process(bufB.data(), bufB.data(), n_samples);
 		}
