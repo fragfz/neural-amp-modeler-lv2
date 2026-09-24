@@ -77,8 +77,7 @@ namespace NAM {
 			else if (std::string(features[i]->URI) == std::string(LV2_LOG__log))
 				logger.log = static_cast<LV2_Log_Log*>(features[i]->data);
 			else if (std::string(features[i]->URI) == std::string(LV2_OPTIONS__options))
-				options = stati
-c_cast<LV2_Options_Option*>(features[i]->data);
+				options = static_cast<LV2_Options_Option*>(features[i]->data);
 		}
 	
 		lv2_log_logger_set_map(&logger, map);
@@ -142,8 +141,7 @@ c_cast<LV2_Options_Option*>(features[i]->data);
 				try
 				{
 					// load model from path
-					const
- size_t pathlen = strlen(msg->path);
+					const size_t pathlen = strlen(msg->path);
 
 					if (pathlen == 0 || pathlen >= MAX_FILE_NAME)
 					{
@@ -225,8 +223,7 @@ c_cast<LV2_Options_Option*>(features[i]->data);
 
 			if (receptiveFieldSize > -1)
 			{
-				// A newly loaded model is prewa
-rmed to have a silent sample history
+				// A newly loaded model is prewarmed to have a silent sample history
 				nam->silentSamples[slot] = receptiveFieldSize;
 				nam->smartBypassed[slot] = true;
 			}
@@ -293,8 +290,7 @@ rmed to have a silent sample history
 						uint32_t slot = kNumSlots;
 						if (((const LV2_Atom_URID*)property)->body == uris.model1_Path)
 							slot = 0;
-						else if (((const LV2_
-Atom_URID*)property)->body == uris.model2_Path)
+						else if (((const LV2_Atom_URID*)property)->body == uris.model2_Path)
 							slot = 1;
 						else if (((const LV2_Atom_URID*)property)->body == uris.model_Path)
 							slot = 0;	// legacy model parameter maps to slot 0
@@ -368,8 +364,7 @@ Atom_URID*)property)->body == uris.model2_Path)
 			}
 		}
 
-		// --- Stag
-e 2: NAM 1 (bufA in place) ---
+		// --- Stage 2: NAM 1 (bufA in place) ---
 
 		bool bypass1 = false;
 
@@ -438,8 +433,7 @@ e 2: NAM 1 (bufA in place) ---
 					sample = sample - dcPrevInput + dcCoefficient * dcPrevOutput;
 
 					dcPrevInput = dcInput;
-					dcPrevOutput = s
-ample;
+					dcPrevOutput = sample;
 				}
 
 				bufB[i] = sample * level1 * level2;
@@ -526,8 +520,7 @@ ample;
 				// do very basic smoothing
 				level = (.99f * level) + (.01f * desiredOutputLevel);
 
-				ports.audio_out[i] = bufB[i] * level
-;
+				ports.audio_out[i] = bufB[i] * level;
 			}
 
 			outputLevel[1] = level;
@@ -603,8 +596,7 @@ ample;
 
 			LV2_State_Free_Path* free_path = (LV2_State_Free_Path *)lv2_features_data(features, LV2_STATE__freePath);
 
-			if (free_path !
-= nullptr)
+			if (free_path != nullptr)
 			{
 				free_path->free_path(free_path->handle, apath);
 			}
@@ -670,8 +662,7 @@ ample;
 			{
 				LV2_State_Map_Path* map_path = (LV2_State_Map_Path*)lv2_features_data(features, LV2_STATE__mapPath);
 
-				if
- (map_path == nullptr)
+				if (map_path == nullptr)
 				{
 					lv2_log_error(&nam->logger, "LV2_STATE__mapPath unsupported by host\n");
 
@@ -722,6 +713,9 @@ ample;
 
 	void Plugin::write_current_path(uint32_t slot)
 	{
+		if (slot >= kNumSlots)
+			return;
+
 		LV2_Atom_Forge_Frame frame;
 
 		lv2_atom_forge_frame_time(&atom_forge, 0);
@@ -729,6 +723,7 @@ ample;
 
 		lv2_atom_forge_key(&atom_forge, uris.patch_property);
 		lv2_atom_forge_urid(&atom_forge, slot == 0 ? uris.model1_Path : uris.model2_Path);
+
 		lv2_atom_forge_key(&atom_forge, uris.patch_value);
 		lv2_atom_forge_path(&atom_forge, currentModelPaths[slot].c_str(), (uint32_t)currentModelPaths[slot].length() + 1);
 
