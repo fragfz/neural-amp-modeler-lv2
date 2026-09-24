@@ -711,17 +711,21 @@ namespace NAM {
 		return result;
 	}
 
-	void Plugin::write_current_path()
+	void Plugin::write_current_path(uint32_t slot)
 	{
+		if (slot >= kNumSlots)
+			return;
+
 		LV2_Atom_Forge_Frame frame;
 
 		lv2_atom_forge_frame_time(&atom_forge, 0);
 		lv2_atom_forge_object(&atom_forge, &frame, 0, uris.patch_Set);
 
 		lv2_atom_forge_key(&atom_forge, uris.patch_property);
-		lv2_atom_forge_urid(&atom_forge, uris.model_Path);
+		lv2_atom_forge_urid(&atom_forge, slot == 0 ? uris.model1_Path : uris.model2_Path);
+
 		lv2_atom_forge_key(&atom_forge, uris.patch_value);
-		lv2_atom_forge_path(&atom_forge, currentModelPath.c_str(), (uint32_t)currentModelPath.length() + 1);
+		lv2_atom_forge_path(&atom_forge, currentModelPaths[slot].c_str(), (uint32_t)currentModelPaths[slot].length() + 1);
 
 		lv2_atom_forge_pop(&atom_forge, &frame);
 	}
