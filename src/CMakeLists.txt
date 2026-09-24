@@ -38,13 +38,13 @@ set(SOURCES nam_lv2.cpp
 
 set(NA_SOURCES ../deps/NeuralAudio/NeuralAudio/NeuralModel.h)
 
-add_library(neural_amp_modeler SHARED ${SOURCES} ${NA_SOURCES})
+add_library(neural_amp_modeler_dual SHARED ${SOURCES} ${NA_SOURCES})
 
-target_include_directories(neural_amp_modeler PUBLIC ../deps/NeuralAudio)
-target_include_directories(neural_amp_modeler PUBLIC ../deps/lv2/include)
-target_include_directories(neural_amp_modeler PUBLIC ../deps/denormal)
+target_include_directories(neural_amp_modeler_dual PUBLIC ../deps/NeuralAudio)
+target_include_directories(neural_amp_modeler_dual PUBLIC ../deps/lv2/include)
+target_include_directories(neural_amp_modeler_dual PUBLIC ../deps/denormal)
 
-target_link_libraries(neural_amp_modeler PRIVATE NeuralAudio)
+target_link_libraries(neural_amp_modeler_dual PRIVATE NeuralAudio)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})
 source_group(NAM ${CMAKE_CURRENT_SOURCE_DIR} FILES ${NA_SOURCES})
@@ -64,15 +64,16 @@ else()
 	message(STATUS "Smart Bypass NOT enabled")
 endif (SMART_BYPASS_ENABLED)
 
-set_target_properties(neural_amp_modeler
+set_target_properties(neural_amp_modeler_dual
 	PROPERTIES
 	CXX_VISIBILITY_PRESET hidden
-	INTERPROCEDURAL_OPTIMIZATION TRUE
+	INTERPROCEDURAL_OPTIMIZATI
+ON TRUE
 	PREFIX ""
 )
 
 # Platform
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	target_compile_definitions(neural_amp_modeler PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+	target_compile_definitions(neural_amp_modeler_dual PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()

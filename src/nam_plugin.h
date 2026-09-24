@@ -23,7 +23,7 @@
 
 #include <NeuralAudio/NeuralModel.h>
 
-#define PlUGIN_URI "http://github.com/mikeoliphant/neural-amp-modeler-lv2"
+#define PlUGIN_URI "http://github.com/fragfz/neural-amp-modeler-dual-chain"
 #define MODEL_URI PlUGIN_URI "#model"
 
 namespace NAM {
@@ -88,7 +88,8 @@ namespace NAM {
 		void write_current_path();
 
 		static uint32_t options_get(LV2_Handle instance, LV2_Options_Option* options);
-		static uint32_t options_set(LV2_Handle instance, const LV2_Options_Option* options);
+		static uint32_t options_set
+(LV2_Handle instance, const LV2_Options_Option* options);
 
 		static LV2_Worker_Status work(LV2_Handle instance, LV2_Worker_Respond_Function respond, LV2_Worker_Respond_Handle handle,
 			uint32_t size, const void* data);
