@@ -85,6 +85,11 @@ namespace NAM {
 		NeuralAudio::NeuralModel* currentModels[kNumSlots] = { nullptr, nullptr };
 		std::string currentModelPaths[kNumSlots];
 
+		// DC blocker state (after NAM 1 stage)
+		float dcPrevInput = 0;
+		float dcPrevOutput = 0;
+		float dcCoefficient = 0;
+
 		Plugin();
 		~Plugin();
 

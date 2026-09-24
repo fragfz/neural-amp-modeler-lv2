@@ -7,6 +7,10 @@
 
 #define SMOOTH_EPSILON .0001f
 
+#ifndef DC_BLOCKER_HZ
+#define DC_BLOCKER_HZ 5.0f
+#endif
+
 #ifndef BYPASS_DB_THRESHOLD
 #define BYPASS_DB_THRESHOLD -100
 #endif
@@ -56,6 +60,8 @@ namespace NAM {
 	bool Plugin::initialize(double sampleRate, const LV2_Feature* const* features) noexcept
 	{
 		this->sampleRate = sampleRate;
+
+		dcCoefficient = 1.0f - ((float)(2.0 * M_PI * DC_BLOCKER_HZ) / (float)sampleRate);
 
 		loader.SetExternalSampleRate((int)sampleRate);
 
@@ -399,7 +405,10 @@ namespace NAM {
 			currentModels[0]->Process(bufA.data(), bufA.data(), n_samples);
 		}
 
-		// --- Stage 3: output level 1 + input level 2 (bufA -> bufB) ---
+		// --- Stage 3: DC blocker + output level 1 + input level 2 (bufA -> bufB) ---
+
+		// DC blocking only makes sense when NAM 1 actually ran
+		const bool useDC = currentModels[0] != nullptr;
 
 		float desiredOut1Level = powf(10, (*(ports.output_level1) + model1LoudnessAdjustmentDB) * 0.05f);
 		float desiredIn2Level = powf(10, (*(ports.input_level2) + model2InputAdjustmentDB) * 0.05f);
@@ -414,7 +423,20 @@ namespace NAM {
 				level1 = (.99f * level1) + (.01f * desiredOut1Level);
 				level2 = (.99f * level2) + (.01f * desiredIn2Level);
 
-				bufB[i] = bufA[i] * level1 * level2;
+				float sample = bufA[i];
+
+				if (useDC)
+				{
+					// dc blocker
+					float dcInput = sample;
+
+					sample = sample - dcPrevInput + dcCoefficient * dcPrevOutput;
+
+					dcPrevInput = dcInput;
+					dcPrevOutput = sample;
+				}
+
+				bufB[i] = sample * level1 * level2;
 			}
 
 			outputLevel[0] = level1;
@@ -427,7 +449,20 @@ namespace NAM {
 
 			for (unsigned int i = 0; i < n_samples; i++)
 			{
-				bufB[i] = bufA[i] * level1 * level2;
+				float sample = bufA[i];
+
+				if (useDC)
+				{
+					// dc blocker
+					float dcInput = sample;
+
+					sample = sample - dcPrevInput + dcCoefficient * dcPrevOutput;
+
+					dcPrevInput = dcInput;
+					dcPrevOutput = sample;
+				}
+
+				bufB[i] = sample * level1 * level2;
 			}
 		}
 
