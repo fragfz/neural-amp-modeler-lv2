@@ -82,7 +82,7 @@ static const void* extension_data(const char* uri)
 
 static const LV2_Descriptor descriptor =
 {
-	"http://github.com/fragfz/neural-amp-modeler-dual-chain",
+	"http://github.com/fragfz/neural-amp-modeler-trio-chain",
 	instantiate,
 	connect_port,
 	

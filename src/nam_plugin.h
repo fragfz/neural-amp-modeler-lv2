@@ -25,9 +25,10 @@
 
 #include <NeuralAudio/NeuralModel.h>
 
-#define PlUGIN_URI "http://github.com/fragfz/neural-amp-modeler-dual-chain"
+#define PlUGIN_URI "http://github.com/fragfz/neural-amp-modeler-trio-chain"
 #define MODEL1_URI PlUGIN_URI "#model1"
 #define MODEL2_URI PlUGIN_URI "#model2"
+#define MODEL3_URI PlUGIN_URI "#model3"
 #define MODEL_URI PlUGIN_URI "#model"	// legacy state key, restored into slot 0
 
 #ifdef ENABLE_EQ
@@ -186,7 +187,7 @@ private:
 namespace NAM {
 	static constexpr unsigned int MAX_FILE_NAME = 1024;
 
-	static constexpr uint32_t kNumSlots = 2;
+	static constexpr uint32_t kNumSlots = 3;
 
 	enum LV2WorkType {
 		kWorkTypeLoad,
@@ -226,6 +227,9 @@ namespace NAM {
 			float* enable2;
 			float* input_level2;
 			float* output_level2;
+			float* enable3;
+			float* input_level3;
+			float* output_level3;
 #ifdef ENABLE_EQ
 			float* eq_bass;
 			float* eq_mid;
@@ -243,7 +247,7 @@ namespace NAM {
 		LV2_Worker_Schedule* schedule = nullptr;
 
 		NeuralAudio::NeuralModelLoader loader;
-		NeuralAudio::NeuralModel* currentModels[kNumSlots] = { nullptr, nullptr };
+		NeuralAudio::NeuralModel* currentModels[kNumSlots] = { nullptr, nullptr, nullptr };
 		std::string currentModelPaths[kNumSlots];
 
 		// global DC blocker state (end of chain, before the EQ)
@@ -289,6 +293,7 @@ namespace NAM {
 			LV2_URID model_Path;
 			LV2_URID model1_Path;
 			LV2_URID model2_Path;
+			LV2_URID model3_Path;
 		};
 
 		URIs uris = {};
@@ -300,8 +305,8 @@ namespace NAM {
 		std::vector<float> bufA;
 		std::vector<float> bufB;
 
-		float inputLevel[kNumSlots] = { 0, 0 };
-		float outputLevel[kNumSlots] = { 0, 0 };
+		float inputLevel[kNumSlots] = { 0, 0, 0 };
+		float outputLevel[kNumSlots] = { 0, 0, 0 };
 		int32_t maxBufferSize = 512;
 
 #ifdef ENABLE_EQ

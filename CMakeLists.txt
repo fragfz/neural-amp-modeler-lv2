@@ -19,7 +19,7 @@ else()
 	message(FATAL_ERROR "Unrecognized Platform!")
 endif()
 
-set(NAM_LV2_ID http://github.com/fragfz/neural-amp-modeler-dual-chain)
+set(NAM_LV2_ID http://github.com/fragfz/neural-amp-modeler-trio-chain)
 
 add_subdirectory(src)
 
@@ -33,23 +33,23 @@ if (NOT DEFINED EQ_KNOBS)
 	set(EQ_KNOBS "")
 endif()
 if (NOT DEFINED QUALITY_INDEX)
-	set(QUALITY_INDEX 10)
+	set(QUALITY_INDEX 13)
 endif()
 
 
-# create neural_amp_modeler_dual.lv2
+# create neural_amp_modeler_trio.lv2
 add_custom_target(copy_binaries ALL
-	${CMAKE_COMMAND} -E copy "$<TARGET_FILE:neural_amp_modeler_dual>" neural_amp_modeler_dual.lv2/
-	DEPENDS neural_amp_modeler_dual
+	${CMAKE_COMMAND} -E copy "$<TARGET_FILE:neural_amp_modeler_trio>" neural_amp_modeler_trio.lv2/
+	DEPENDS neural_amp_modeler_trio
 )
 
-file(COPY resources/modgui DESTINATION neural_amp_modeler_dual.lv2)
+file(COPY resources/modgui DESTINATION neural_amp_modeler_trio.lv2)
 
-configure_file(resources/modgui.ttl neural_amp_modeler_dual.lv2/modgui.ttl @ONLY)
-configure_file(resources/manifest.ttl.in neural_amp_modeler_dual.lv2/manifest.ttl)
-configure_file(resources/neural_amp_modeler.ttl.in neural_amp_modeler_dual.lv2/neural_amp_modeler_dual.ttl)
+configure_file(resources/modgui.ttl neural_amp_modeler_trio.lv2/modgui.ttl @ONLY)
+configure_file(resources/manifest.ttl.in neural_amp_modeler_trio.lv2/manifest.ttl)
+configure_file(resources/neural_amp_modeler.ttl.in neural_amp_modeler_trio.lv2/neural_amp_modeler_trio.ttl)
 
-install (DIRECTORY ${CMAKE_BINARY_DIR}/neural_amp_modeler_dual.lv2
+install (DIRECTORY ${CMAKE_BINARY_DIR}/neural_amp_modeler_trio.lv2
        DESTINATION ${LIB_INSTALL_DIR}/lv2
 )
 

@@ -111,6 +111,7 @@ namespace NAM {
 		uris.model_Path = map->map(map->handle, MODEL_URI);
 		uris.model1_Path = map->map(map->handle, MODEL1_URI);
 		uris.model2_Path = map->map(map->handle, MODEL2_URI);
+		uris.model3_Path = map->map(map->handle, MODEL3_URI);
 
 		if (options != nullptr)
 			options_set(this, options);
@@ -278,6 +279,8 @@ namespace NAM {
 							slot = 0;
 						else if (((const LV2_Atom_URID*)property)->body == uris.model2_Path)
 							slot = 1;
+						else if (((const LV2_Atom_URID*)property)->body == uris.model3_Path)
+							slot = 2;
 						else if (((const LV2_Atom_URID*)property)->body == uris.model_Path)
 							slot = 0;	// legacy model parameter maps to slot 0
 						if (slot < kNumSlots)
@@ -295,35 +298,26 @@ namespace NAM {
 
 		float level;
 
-		float model1InputAdjustmentDB = 0;
-		float model1LoudnessAdjustmentDB = 0;
-		float model2InputAdjustmentDB = 0;
-		float model2LoudnessAdjustmentDB = 0;
+		float modelInputAdjustmentDB[kNumSlots] = { 0, 0, 0 };
+		float modelLoudnessAdjustmentDB[kNumSlots] = { 0, 0, 0 };
 
-		if (currentModels[0] != nullptr)
+		for (uint32_t slot = 0; slot < kNumSlots; ++slot)
 		{
-			if (*(ports.quality_scale) != currentModels[0]->GetQualityScaleFactor())
+			if (currentModels[slot] != nullptr)
 			{
-				currentModels[0]->SetQualityScaleFactor(*(ports.quality_scale));
+				if (*(ports.quality_scale) != currentModels[slot]->GetQualityScaleFactor())
+				{
+					currentModels[slot]->SetQualityScaleFactor(*(ports.quality_scale));
+				}
+
+				modelInputAdjustmentDB[slot] = currentModels[slot]->GetRecommendedInputDBAdjustment();
+				modelLoudnessAdjustmentDB[slot] = currentModels[slot]->GetRecommendedOutputDBAdjustment();
 			}
-
-			model1InputAdjustmentDB = currentModels[0]->GetRecommendedInputDBAdjustment();
-			model1LoudnessAdjustmentDB = currentModels[0]->GetRecommendedOutputDBAdjustment();
-		}
-
-		if (currentModels[1] != nullptr)
-		{
-			if (*(ports.quality_scale) != currentModels[1]->GetQualityScaleFactor())
-			{
-				currentModels[1]->SetQualityScaleFactor(*(ports.quality_scale));
-			}
-
-			model2InputAdjustmentDB = currentModels[1]->GetRecommendedInputDBAdjustment();
-			model2LoudnessAdjustmentDB = currentModels[1]->GetRecommendedOutputDBAdjustment();
 		}
 
 		const bool enableBlock1 = *(ports.enable1) > 0.5f;
 		const bool enableBlock2 = *(ports.enable2) > 0.5f;
+		const bool enableBlock3 = *(ports.enable3) > 0.5f;
 
 		// --- Block 1: input level 1 > NAM 1 > output level 1 (audio_in -> bufB) ---
 
@@ -331,7 +325,7 @@ namespace NAM {
 		{
 			// input level 1 (ports.audio_in -> bufA)
 
-			float desiredInLevel = powf(10, (*(ports.input_level1) + model1InputAdjustmentDB) * 0.05f);
+			float desiredInLevel = powf(10, (*(ports.input_level1) + modelInputAdjustmentDB[0]) * 0.05f);
 
 			if (fabs(desiredInLevel - inputLevel[0]) > SMOOTH_EPSILON)
 			{
@@ -366,7 +360,7 @@ namespace NAM {
 
 			// output level 1 (bufA -> bufB)
 
-			float desiredOutLevel = powf(10, (*(ports.output_level1) + model1LoudnessAdjustmentDB) * 0.05f);
+			float desiredOutLevel = powf(10, (*(ports.output_level1) + modelLoudnessAdjustmentDB[0]) * 0.05f);
 
 			if (fabs(desiredOutLevel - outputLevel[0]) > SMOOTH_EPSILON)
 			{
@@ -409,13 +403,13 @@ namespace NAM {
 			}
 		}
 
-		// --- Block 2: input level 2 > NAM 2 > output level 2 (bufB -> audio_out) ---
+		// --- Block 2: input level 2 > NAM 2 > output level 2 (bufB -> bufB) ---
 
 		if (enableBlock2)
 		{
 			// input level 2 (bufB -> bufB)
 
-			float desiredInLevel = powf(10, (*(ports.input_level2) + model2InputAdjustmentDB) * 0.05f);
+			float desiredInLevel = powf(10, (*(ports.input_level2) + modelInputAdjustmentDB[1]) * 0.05f);
 
 			if (fabs(desiredInLevel - inputLevel[1]) > SMOOTH_EPSILON)
 			{
@@ -448,9 +442,9 @@ namespace NAM {
 				currentModels[1]->Process(bufB.data(), bufB.data(), n_samples);
 			}
 
-			// output level 2 (bufB -> ports.audio_out)
+			// output level 2 (bufB -> bufB, in place)
 
-			float desiredOutLevel = powf(10, (*(ports.output_level2) + model2LoudnessAdjustmentDB) * 0.05f);
+			float desiredOutLevel = powf(10, (*(ports.output_level2) + modelLoudnessAdjustmentDB[1]) * 0.05f);
 
 			if (fabs(desiredOutLevel - outputLevel[1]) > SMOOTH_EPSILON)
 			{
@@ -461,7 +455,7 @@ namespace NAM {
 					// do very basic smoothing
 					level = (.99f * level) + (.01f * desiredOutLevel);
 
-					ports.audio_out[i] = bufB[i] * level;
+					bufB[i] = bufB[i] * level;
 				}
 
 				outputLevel[1] = level;
@@ -472,6 +466,88 @@ namespace NAM {
 
 				for (unsigned int i = 0; i < n_samples; i++)
 				{
+					bufB[i] = bufB[i] * level;
+				}
+			}
+		}
+		else
+		{
+			// block bypassed: the signal is already in bufB, nothing to do
+
+			// Keep the CPU load steady: still run the model on a scratch
+			// copy of the chain signal and discard the result. bufA is free
+			// here (block 1 already wrote its output into bufB).
+			if (currentModels[1] != nullptr)
+			{
+				memcpy(bufA.data(), bufB.data(), n_samples * sizeof(float));
+
+				currentModels[1]->Process(bufA.data(), bufA.data(), n_samples);
+			}
+		}
+
+		// --- Block 3: input level 3 > NAM 3 > output level 3 (bufB -> audio_out) ---
+
+		if (enableBlock3)
+		{
+			// input level 3 (bufB -> bufB)
+
+			float desiredInLevel = powf(10, (*(ports.input_level3) + modelInputAdjustmentDB[2]) * 0.05f);
+
+			if (fabs(desiredInLevel - inputLevel[2]) > SMOOTH_EPSILON)
+			{
+				level = inputLevel[2];
+
+				for (unsigned int i = 0; i < n_samples; i++)
+			{
+					// do very basic smoothing
+					level = (.99f * level) + (.01f * desiredInLevel);
+
+					bufB[i] = bufB[i] * level;
+				}
+
+				inputLevel[2] = level;
+			}
+			else
+			{
+				level = inputLevel[2] = desiredInLevel;
+
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					bufB[i] = bufB[i] * level;
+				}
+			}
+
+			// NAM 3 (bufB in place)
+
+			if (currentModels[2] != nullptr)
+			{
+				currentModels[2]->Process(bufB.data(), bufB.data(), n_samples);
+			}
+
+			// output level 3 (bufB -> ports.audio_out)
+
+			float desiredOutLevel = powf(10, (*(ports.output_level3) + modelLoudnessAdjustmentDB[2]) * 0.05f);
+
+			if (fabs(desiredOutLevel - outputLevel[2]) > SMOOTH_EPSILON)
+			{
+				level = outputLevel[2];
+
+				for (unsigned int i = 0; i < n_samples; i++)
+			{
+					// do very basic smoothing
+					level = (.99f * level) + (.01f * desiredOutLevel);
+
+					ports.audio_out[i] = bufB[i] * level;
+				}
+
+				outputLevel[2] = level;
+			}
+			else
+			{
+				level = outputLevel[2] = desiredOutLevel;
+
+				for (unsigned int i = 0; i < n_samples; i++)
+			{
 					ports.audio_out[i] = bufB[i] * level;
 				}
 			}
@@ -484,11 +560,11 @@ namespace NAM {
 			// Keep the CPU load steady: still run the model on a scratch
 			// copy of the chain signal and discard the result. bufA is free
 			// here (block 1 already wrote its output into bufB).
-			if (currentModels[1] != nullptr)
+			if (currentModels[2] != nullptr)
 			{
 				memcpy(bufA.data(), bufB.data(), n_samples * sizeof(float));
 
-				currentModels[1]->Process(bufA.data(), bufA.data(), n_samples);
+				currentModels[2]->Process(bufA.data(), bufA.data(), n_samples);
 			}
 		}
 
@@ -577,7 +653,7 @@ namespace NAM {
 			return LV2_STATE_ERR_NO_FEATURE;
 		}
 
-		const LV2_URID modelPathKeys[kNumSlots] = { nam->uris.model1_Path, nam->uris.model2_Path };
+		const LV2_URID modelPathKeys[kNumSlots] = { nam->uris.model1_Path, nam->uris.model2_Path, nam->uris.model3_Path };
 
 		for (uint32_t slot = 0; slot < kNumSlots; ++slot)
 		{
@@ -618,7 +694,7 @@ namespace NAM {
 		uint32_t    type     = 0;
 		uint32_t    valflags = 0;
 
-		const LV2_URID modelPathKeys[kNumSlots] = { nam->uris.model1_Path, nam->uris.model2_Path };
+		const LV2_URID modelPathKeys[kNumSlots] = { nam->uris.model1_Path, nam->uris.model2_Path, nam->uris.model3_Path };
 
 		bool haveSlot[kNumSlots] = { false, false };
 		const void* values[kNumSlots] = { nullptr, nullptr };
@@ -720,7 +796,7 @@ namespace NAM {
 		lv2_atom_forge_object(&atom_forge, &frame, 0, uris.patch_Set);
 
 		lv2_atom_forge_key(&atom_forge, uris.patch_property);
-		lv2_atom_forge_urid(&atom_forge, slot == 0 ? uris.model1_Path : uris.model2_Path);
+		lv2_atom_forge_urid(&atom_forge, slot == 0 ? uris.model1_Path : (slot == 1 ? uris.model2_Path : uris.model3_Path));
 
 		lv2_atom_forge_key(&atom_forge, uris.patch_value);
 		lv2_atom_forge_path(&atom_forge, currentModelPaths[slot].c_str(), (uint32_t)currentModelPaths[slot].length() + 1);

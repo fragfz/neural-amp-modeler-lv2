@@ -38,13 +38,13 @@ set(SOURCES nam_lv2.cpp
 
 set(NA_SOURCES ../deps/NeuralAudio/NeuralAudio/NeuralModel.h)
 
-add_library(neural_amp_modeler_dual SHARED ${SOURCES} ${NA_SOURCES})
+add_library(neural_amp_modeler_trio SHARED ${SOURCES} ${NA_SOURCES})
 
-target_include_directories(neural_amp_modeler_dual PUBLIC ../deps/NeuralAudio)
-target_include_directories(neural_amp_modeler_dual PUBLIC ../deps/lv2/include)
-target_include_directories(neural_amp_modeler_dual PUBLIC ../deps/denormal)
+target_include_directories(neural_amp_modeler_trio PUBLIC ../deps/NeuralAudio)
+target_include_directories(neural_amp_modeler_trio PUBLIC ../deps/lv2/include)
+target_include_directories(neural_amp_modeler_trio PUBLIC ../deps/denormal)
 
-target_link_libraries(neural_amp_modeler_dual PRIVATE NeuralAudio)
+target_link_libraries(neural_amp_modeler_trio PRIVATE NeuralAudio)
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})
 source_group(NAM ${CMAKE_CURRENT_SOURCE_DIR} FILES ${NA_SOURCES})
@@ -81,13 +81,13 @@ if (ENABLE_EQ)
 
 	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/eq_ports.ttl.in" EQ_PORTS)
 	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/eq_knobs.ttl.in" EQ_KNOBS)
-	set(QUALITY_INDEX 13)
+	set(QUALITY_INDEX 16)
 else()
 	message(STATUS "EQ NOT enabled")
 
 	set(EQ_PORTS "")
 	set(EQ_KNOBS "")
-	set(QUALITY_INDEX 10)
+	set(QUALITY_INDEX 13)
 endif (ENABLE_EQ)
 
 # Export the ttl template variables to the parent scope: the root
@@ -98,7 +98,7 @@ set(EQ_PORTS "${EQ_PORTS}" PARENT_SCOPE)
 set(EQ_KNOBS "${EQ_KNOBS}" PARENT_SCOPE)
 set(QUALITY_INDEX "${QUALITY_INDEX}" PARENT_SCOPE)
 
-set_target_properties(neural_amp_modeler_dual
+set_target_properties(neural_amp_modeler_trio
 	PROPERTIES
 	CXX_VISIBILITY_PRESET hidden
 	INTERPROCEDURAL_OPTIMIZATION TRUE
@@ -108,5 +108,5 @@ set_target_properties(neural_amp_modeler_dual
 # Platform
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-	target_compile_definitions(neural_amp_modeler_dual PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+	target_compile_definitions(neural_amp_modeler_trio PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 endif()
