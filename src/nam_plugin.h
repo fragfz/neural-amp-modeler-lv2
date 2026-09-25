@@ -257,6 +257,12 @@ namespace NAM {
 			float* eq_treble;
 #endif
 			float* quality_scale;
+		// Stage-2 wet-loop audio ports (appended after all control ports in
+		// the ttl, indices computed by CMake after QUALITY_INDEX)
+		float* output1;      // send: NAM1 block output tap (loop 1 send)
+		const float* input2; // return: summed into the NAM2 block input (loop 1 return)
+		float* output2;      // send: NAM2 block output tap (loop 2 send)
+		const float* input3; // return: summed into the cab input (loop 2 return)
 		};
 
 		Ports ports = {};

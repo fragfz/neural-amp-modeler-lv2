@@ -496,7 +496,11 @@ namespace NAM {
 			}
 		}
 
-		// --- Block 2: input level 2 > NAM 2 > output level 2 (bufB -> audio_out) ---
+		// --- Send 1: NAM1 block output tap (wet loop 1 send) ---
+		// bufB holds the block-1 output in both the enabled and bypassed cases.
+		memcpy(ports.output1, bufB.data(), n_samples * sizeof(float));
+
+		// --- Block 2: input level 2 + return 1 > NAM 2 > output level 2 (bufB -> audio_out) ---
 
 		if (enableBlock2)
 		{
@@ -513,7 +517,7 @@ namespace NAM {
 					// do very basic smoothing
 					level = (.99f * level) + (.01f * desiredInLevel);
 
-					bufB[i] = bufB[i] * level;
+					bufB[i] = (bufB[i] + ports.input2[i]) * level;
 				}
 
 				inputLevel[1] = level;
@@ -524,7 +528,7 @@ namespace NAM {
 
 				for (unsigned int i = 0; i < n_samples; i++)
 				{
-					bufB[i] = bufB[i] * level;
+					bufB[i] = (bufB[i] + ports.input2[i]) * level;
 				}
 			}
 
@@ -577,6 +581,15 @@ namespace NAM {
 
 				currentModels[1]->Process(bufA.data(), bufA.data(), n_samples);
 			}
+		}
+
+		// --- Send 2: NAM2 block output tap (wet loop 2 send) ---
+		memcpy(ports.output2, ports.audio_out, n_samples * sizeof(float));
+
+		// --- Return 2: sum the wet-loop-2 return into the cab input ---
+		for (unsigned int i = 0; i < n_samples; i++)
+		{
+			ports.audio_out[i] += ports.input3[i];
 		}
 
 #ifdef ENABLE_CAB

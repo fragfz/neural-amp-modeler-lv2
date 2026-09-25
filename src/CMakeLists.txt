@@ -137,6 +137,20 @@ else()
 	set(EQ_KNOBS "")
 endif (ENABLE_EQ)
 
+# Stage-2 wet-loop send/return audio ports: appended after all control ports,
+# so their indices depend only on how many control ports are enabled.
+math(EXPR SEND_I0 "${QUALITY_INDEX} + 1")
+math(EXPR SEND_I1 "${QUALITY_INDEX} + 2")
+math(EXPR SEND_I2 "${QUALITY_INDEX} + 3")
+math(EXPR SEND_I3 "${QUALITY_INDEX} + 4")
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/send_ports.ttl.in" SEND_PORTS)
+
+string(REPLACE "@SEND_I0@" "${SEND_I0}" SEND_PORTS "${SEND_PORTS}")
+string(REPLACE "@SEND_I1@" "${SEND_I1}" SEND_PORTS "${SEND_PORTS}")
+string(REPLACE "@SEND_I2@" "${SEND_I2}" SEND_PORTS "${SEND_PORTS}")
+string(REPLACE "@SEND_I3@" "${SEND_I3}" SEND_PORTS "${SEND_PORTS}")
+
 # Export the ttl template variables to the parent scope: the root
 # CMakeLists.txt runs configure_file() on the ttl templates, and normal
 # variables set here (in the add_subdirectory() child scope) are not
@@ -146,6 +160,7 @@ set(EQ_KNOBS "${EQ_KNOBS}" PARENT_SCOPE)
 set(CAB_PORTS "${CAB_PORTS}" PARENT_SCOPE)
 set(CAB_KNOBS "${CAB_KNOBS}" PARENT_SCOPE)
 set(QUALITY_INDEX "${QUALITY_INDEX}" PARENT_SCOPE)
+set(SEND_PORTS "${SEND_PORTS}" PARENT_SCOPE)
 
 set_target_properties(neural_amp_modeler_dual
 	PROPERTIES

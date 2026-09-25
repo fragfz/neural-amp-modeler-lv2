@@ -54,10 +54,17 @@
 LV2 plugin with two chained neural network machine learning guitar amplifier
 simulation models.
 
-Signal flow: Input > [In Lvl 1 > NAM 1 > Out Lvl 1] > [In Lvl 2 > NAM 2 >
-Out Lvl 2] > Cab IR > DC blocker > EQ > Output. Each NAM block and the cab
+Signal flow: Input 1 > [In Lvl 1 > NAM 1 > Out Lvl 1] > [In Lvl 2 > NAM 2 >
+Out Lvl 2] > Cab IR > DC blocker > EQ > Output 3. Each NAM block and the cab
 can be enabled/disabled with its Enable toggle; a disabled block passes
 audio through unaffected.
+
+Wet loops: Output 1 is a live tap of the NAM1 block output and Input 2 is
+summed into the NAM2 block input (loop 1, e.g. delay/reverb between preamp
+and power amp); Output 2 is a live tap of the NAM2 block output and Input 3
+is summed into the cab input (loop 2, e.g. wet effects before the cab).
+Unconnected return inputs are silent, so the plugin behaves exactly like
+the plain serial chain when the loops are not patched.
 
 Models supported:
   Neural Amp Modeler (NAM): https://github.com/sdatkinson/neural-amp-modeler
@@ -92,12 +99,12 @@ A large collection of models is available at https://www.tone3000.com
 		a lv2:InputPort, lv2:AudioPort;
 		lv2:index 2;
 		lv2:symbol "input";
-		lv2:name "Input";
+		lv2:name "Input 1";
 	], [
 		a lv2:OutputPort, lv2:AudioPort;
 		lv2:index 3;
 		lv2:symbol "output";
-		lv2:name "Output";
+		lv2:name "Output 3";
 	];
 
 	# Parameters (in audio-flow order, global parameters last)
@@ -166,4 +173,5 @@ A large collection of models is available at https://www.tone3000.com
 		lv2:default 1.0;
 		lv2:minimum 0.0;
 		lv2:maximum 1.0;
+@SEND_PORTS@
 	].
