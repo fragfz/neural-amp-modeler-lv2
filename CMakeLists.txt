@@ -23,6 +23,19 @@ set(NAM_LV2_ID http://github.com/fragfz/neural-amp-modeler-dual-chain)
 
 add_subdirectory(src)
 
+# Fallbacks: if src/CMakeLists.txt did not define the EQ template variables
+# (e.g. partial/stale source tree), emit a consistent EQ-less bundle
+# instead of a broken ttl with unexpanded @...@ variables.
+if (NOT DEFINED EQ_PORTS)
+	set(EQ_PORTS "")
+endif()
+if (NOT DEFINED EQ_KNOBS)
+	set(EQ_KNOBS "")
+endif()
+if (NOT DEFINED QUALITY_INDEX)
+	set(QUALITY_INDEX 10)
+endif()
+
 
 # create neural_amp_modeler_dual.lv2
 add_custom_target(copy_binaries ALL
