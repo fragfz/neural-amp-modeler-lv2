@@ -396,6 +396,17 @@ namespace NAM {
 		{
 			// block bypassed: pass the signal through untouched
 			memcpy(bufB.data(), ports.audio_in, n_samples * sizeof(float));
+
+			// Keep the CPU load steady (matching the original plugin: once a
+			// model is loaded its cost is constant). Still run the model on a
+			// scratch copy of the input and discard the result, so the enable
+			// toggle only affects what is heard, never the DSP cost.
+			if (currentModels[0] != nullptr)
+			{
+				memcpy(bufA.data(), ports.audio_in, n_samples * sizeof(float));
+
+				currentModels[0]->Process(bufA.data(), bufA.data(), n_samples);
+			}
 		}
 
 		// --- Block 2: input level 2 > NAM 2 > output level 2 (bufB -> audio_out) ---
@@ -469,6 +480,16 @@ namespace NAM {
 		{
 			// block bypassed: pass the signal through untouched
 			memcpy(ports.audio_out, bufB.data(), n_samples * sizeof(float));
+
+			// Keep the CPU load steady: still run the model on a scratch
+			// copy of the chain signal and discard the result. bufA is free
+			// here (block 1 already wrote its output into bufB).
+			if (currentModels[1] != nullptr)
+			{
+				memcpy(bufA.data(), bufB.data(), n_samples * sizeof(float));
+
+				currentModels[1]->Process(bufA.data(), bufA.data(), n_samples);
+			}
 		}
 
 		// --- Global DC blocker (end of chain, before the EQ) ---
