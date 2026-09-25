@@ -5,6 +5,10 @@
 
 #include "nam_plugin.h"
 
+#ifdef ENABLE_CAB
+#include "cab_convolver.h"
+#endif
+
 #define SMOOTH_EPSILON .0001f
 
 #ifndef DC_BLOCKER_HZ
@@ -111,6 +115,9 @@ namespace NAM {
 		uris.model_Path = map->map(map->handle, MODEL_URI);
 		uris.model1_Path = map->map(map->handle, MODEL1_URI);
 		uris.model2_Path = map->map(map->handle, MODEL2_URI);
+#ifdef ENABLE_CAB
+		uris.cab_Path = map->map(map->handle, CAB_URI);
+#endif
 
 		if (options != nullptr)
 			options_set(this, options);
@@ -185,7 +192,46 @@ namespace NAM {
 				return LV2_WORKER_SUCCESS;
 			}
 
+#ifdef ENABLE_CAB
+			case kWorkTypeLoadCab:
+			{
+				auto msg = static_cast<const LV2LoadCabMsg*>(data);
+				auto nam = static_cast<NAM::Plugin*>(instance);
+
+				LV2SwitchCabMsg response = { kWorkTypeSwitchCab, {}, nullptr };
+
+				if (msg->path[0] != 0)
+				{
+					std::vector<float> ir;
+
+					if (LoadCabIr(msg->path, nam->sampleRate, ir) && !ir.empty())
+					{
+						response.convolver = CabConvolver::Create(ir);
+
+						if (response.convolver != nullptr)
+							memcpy(response.path, msg->path, strlen(msg->path));
+					}
+
+					if (response.convolver == nullptr)
+						lv2_log_error(&nam->logger, "Unable to load cab IR from: '%s'\n", msg->path);
+				}
+
+				respond(handle, sizeof(response), &response);
+
+				return LV2_WORKER_SUCCESS;
+			}
+
+			case kWorkTypeFreeCab:
+			{
+				auto msg = static_cast<const LV2FreeCabMsg*>(data);
+				delete msg->convolver;
+
+				return LV2_WORKER_SUCCESS;
+			}
+#endif
+
 			case kWorkTypeSwitch:
+			case kWorkTypeSwitchCab:
 				// should not happen!
 				break;
 		}
@@ -196,8 +242,36 @@ namespace NAM {
 	// runs on RT, right after process(), must not block or [de]allocate memory
 	LV2_Worker_Status Plugin::work_response(LV2_Handle instance, uint32_t size,	const void* data)
 	{
-		if (*(const LV2WorkType*)data != kWorkTypeSwitch)
-			return LV2_WORKER_ERR_UNKNOWN;
+		switch (*(const LV2WorkType*)data)
+		{
+#ifdef ENABLE_CAB
+			case kWorkTypeSwitchCab:
+			{
+				auto cabMsg = static_cast<const LV2SwitchCabMsg*>(data);
+				auto namCab = static_cast<NAM::Plugin*>(instance);
+
+				// prepare reply for deleting the old convolver
+				LV2FreeCabMsg reply = { kWorkTypeFreeCab, namCab->cabConvolver };
+
+				// swap current convolver with the new one
+				namCab->cabConvolver = cabMsg->convolver;
+				namCab->cabPath = cabMsg->path;
+
+				namCab->schedule->schedule_work(namCab->schedule->handle, sizeof(reply), &reply);
+
+				// report change to host/ui
+				namCab->write_cab_path();
+
+				return LV2_WORKER_SUCCESS;
+			}
+#endif
+
+			case kWorkTypeSwitch:
+				break;
+
+			default:
+				return LV2_WORKER_ERR_UNKNOWN;
+		}
 
 		auto msg = static_cast<const LV2SwitchModelMsg*>(data);
 		auto nam = static_cast<NAM::Plugin*>(instance);
@@ -258,6 +332,9 @@ namespace NAM {
 				{
 					write_current_path(0);
 					write_current_path(1);
+#ifdef ENABLE_CAB
+					write_cab_path();
+#endif
 				}
 				else if (obj->body.otype == uris.patch_Set)
 				{
@@ -288,6 +365,16 @@ namespace NAM {
 
 							schedule->schedule_work(schedule->handle, sizeof(msg), &msg);
 						}
+#ifdef ENABLE_CAB
+						else if (((const LV2_Atom_URID*)property)->body == uris.cab_Path)
+						{
+							LV2LoadCabMsg msg = { kWorkTypeLoadCab, {} };
+
+							memcpy(msg.path, file_path + 1, file_path->size);
+
+							schedule->schedule_work(schedule->handle, sizeof(msg), &msg);
+						}
+#endif
 					}
 				}
 			}
@@ -492,6 +579,30 @@ namespace NAM {
 			}
 		}
 
+#ifdef ENABLE_CAB
+		// --- Cab IR (after NAM 2, before the global DC blocker / EQ) ---
+
+		if (cabConvolver != nullptr)
+		{
+			if (*(ports.cab_enable) > 0.5f)
+			{
+				// process through a staging buffer (the convolver must not run in place)
+				memcpy(bufA.data(), ports.audio_out, n_samples * sizeof(float));
+
+				cabConvolver->Process(bufA.data(), ports.audio_out, n_samples);
+			}
+			else
+			{
+				// cab disabled: audio passes through untouched, but keep the CPU
+				// load steady by still running the convolver on a scratch copy
+				// and discarding the result (bufA/bufB are free at this point)
+				memcpy(bufA.data(), ports.audio_out, n_samples * sizeof(float));
+
+				cabConvolver->Process(bufA.data(), bufB.data(), n_samples);
+			}
+		}
+#endif
+
 		// --- Global DC blocker (end of chain, before the EQ) ---
 
 #ifdef ENABLE_DC_BLOCK
@@ -563,7 +674,11 @@ namespace NAM {
 
 		lv2_log_trace(&nam->logger, "Saving state\n");
 
+#ifdef ENABLE_CAB
+		if (!nam->currentModels[0] && !nam->currentModels[1] && !nam->cabConvolver)
+#else
 		if (!nam->currentModels[0] && !nam->currentModels[1])
+#endif
 		{
 			return LV2_STATE_SUCCESS;
 		}
@@ -605,6 +720,30 @@ namespace NAM {
 #endif
 			}
 		}
+
+#ifdef ENABLE_CAB
+		if (nam->cabConvolver != nullptr && !nam->cabPath.empty())
+		{
+			// Map absolute cab IR path to an abstract state path
+			char* apath = map_path->abstract_path(map_path->handle, nam->cabPath.c_str());
+
+			store(handle, nam->uris.cab_Path, apath, strlen(apath) + 1, nam->uris.atom_Path,
+				LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+
+			LV2_State_Free_Path* free_path = (LV2_State_Free_Path *)lv2_features_data(features, LV2_STATE__freePath);
+
+			if (free_path != nullptr)
+			{
+				free_path->free_path(free_path->handle, apath);
+			}
+			else
+			{
+#ifndef _WIN32	// Can't free host-allocated memory on plugin side under Windows
+				free(apath);
+#endif
+			}
+		}
+#endif
 
 		return LV2_STATE_SUCCESS;
 	}
@@ -706,6 +845,58 @@ namespace NAM {
 			}
 		}
 
+#ifdef ENABLE_CAB
+		const void* cabValue = retrieve(handle, nam->uris.cab_Path, &size, &type, &valflags);
+
+		if (cabValue != nullptr && type == nam->uris.atom_Path)
+		{
+			LV2_State_Map_Path* map_path = (LV2_State_Map_Path*)lv2_features_data(features, LV2_STATE__mapPath);
+
+			if (map_path == nullptr)
+			{
+				lv2_log_error(&nam->logger, "LV2_STATE__mapPath unsupported by host\n");
+
+				return LV2_STATE_ERR_NO_FEATURE;
+			}
+
+			// Map abstract state path to absolute path
+			char* path = map_path->absolute_path(map_path->handle, (const char *)cabValue);
+
+			LV2LoadCabMsg msg = { kWorkTypeLoadCab, {} };
+
+			size_t pathLen = strlen(path);
+
+			if (pathLen >= MAX_FILE_NAME)
+			{
+				lv2_log_error(&nam->logger, "Cab IR path is too long (max %u chars)\n", MAX_FILE_NAME);
+
+				result = LV2_STATE_ERR_UNKNOWN;
+			}
+			else
+			{
+				memcpy(msg.path, path, pathLen);
+
+				// Schedule cab IR to be loaded by the provided worker
+				nam->schedule->schedule_work(nam->schedule->handle, sizeof(msg), &msg);
+
+				nam->cabPath = msg.path;
+			}
+
+			LV2_State_Free_Path* free_path = (LV2_State_Free_Path *)lv2_features_data(features, LV2_STATE__freePath);
+
+			if (free_path != nullptr)
+			{
+				free_path->free_path(free_path->handle, path);
+			}
+			else
+			{
+#ifndef _WIN32	// Can't free host-allocated memory on plugin side under Windows
+				free(path);
+#endif
+			}
+		}
+#endif
+
 		return result;
 	}
 
@@ -727,4 +918,22 @@ namespace NAM {
 
 		lv2_atom_forge_pop(&atom_forge, &frame);
 	}
+
+#ifdef ENABLE_CAB
+	void Plugin::write_cab_path()
+	{
+		LV2_Atom_Forge_Frame frame;
+
+		lv2_atom_forge_frame_time(&atom_forge, 0);
+		lv2_atom_forge_object(&atom_forge, &frame, 0, uris.patch_Set);
+
+		lv2_atom_forge_key(&atom_forge, uris.patch_property);
+		lv2_atom_forge_urid(&atom_forge, uris.cab_Path);
+
+		lv2_atom_forge_key(&atom_forge, uris.patch_value);
+		lv2_atom_forge_path(&atom_forge, cabPath.c_str(), (uint32_t)cabPath.length() + 1);
+
+		lv2_atom_forge_pop(&atom_forge, &frame);
+	}
+#endif
 }

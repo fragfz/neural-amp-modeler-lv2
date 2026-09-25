@@ -29,6 +29,7 @@
 #define MODEL1_URI PlUGIN_URI "#model1"
 #define MODEL2_URI PlUGIN_URI "#model2"
 #define MODEL_URI PlUGIN_URI "#model"	// legacy state key, restored into slot 0
+#define CAB_URI PlUGIN_URI "#cab"
 
 #ifdef ENABLE_EQ
 // Global 3-band EQ (low shelf, peaking mid, high shelf) at the end of the
@@ -191,7 +192,10 @@ namespace NAM {
 	enum LV2WorkType {
 		kWorkTypeLoad,
 		kWorkTypeSwitch,
-		kWorkTypeFree
+		kWorkTypeFree,
+		kWorkTypeLoadCab,
+		kWorkTypeSwitchCab,
+		kWorkTypeFreeCab
 	};
 
 	struct LV2LoadModelMsg {
@@ -212,6 +216,24 @@ namespace NAM {
 		NeuralAudio::NeuralModel* model;
 	};
 
+	class CabConvolver;
+
+	struct LV2LoadCabMsg {
+		LV2WorkType type;
+		char path[MAX_FILE_NAME];
+	};
+
+	struct LV2SwitchCabMsg {
+		LV2WorkType type;
+		char path[MAX_FILE_NAME];
+		CabConvolver* convolver;
+	};
+
+	struct LV2FreeCabMsg {
+		LV2WorkType type;
+		CabConvolver* convolver;
+	};
+
 	class Plugin {
 	public:
 		// order matches lv2:index in the bundle ttl
@@ -226,6 +248,9 @@ namespace NAM {
 			float* enable2;
 			float* input_level2;
 			float* output_level2;
+#ifdef ENABLE_CAB
+			float* cab_enable;
+#endif
 #ifdef ENABLE_EQ
 			float* eq_bass;
 			float* eq_mid;
@@ -246,6 +271,11 @@ namespace NAM {
 		NeuralAudio::NeuralModel* currentModels[kNumSlots] = { nullptr, nullptr };
 		std::string currentModelPaths[kNumSlots];
 
+#ifdef ENABLE_CAB
+		CabConvolver* cabConvolver = nullptr;
+		std::string cabPath;
+#endif
+
 		// global DC blocker state (end of chain, before the EQ)
 		float dcPrevInput = 0;
 		float dcPrevOutput = 0;
@@ -260,6 +290,10 @@ namespace NAM {
 		void process(uint32_t n_samples) noexcept;
 
 		void write_current_path(uint32_t slot);
+
+#ifdef ENABLE_CAB
+		void write_cab_path();
+#endif
 
 		static uint32_t options_get(LV2_Handle instance, LV2_Options_Option* options);
 		static uint32_t options_set(LV2_Handle instance, const LV2_Options_Option* options);
@@ -289,6 +323,9 @@ namespace NAM {
 			LV2_URID model_Path;
 			LV2_URID model1_Path;
 			LV2_URID model2_Path;
+#ifdef ENABLE_CAB
+			LV2_URID cab_Path;
+#endif
 		};
 
 		URIs uris = {};

@@ -26,6 +26,12 @@
 	rdfs:label "NAM 2 Model";
 	rdfs:range atom:Path.
 
+<@NAM_LV2_ID@#cab>
+	a lv2:Parameter;
+	mod:fileTypes "wav";
+	rdfs:label "Cab IR";
+	rdfs:range atom:Path.
+
 <@NAM_LV2_ID@>
 	a lv2:Plugin, lv2:SimulatorPlugin, doap:Project;
 	doap:name "Neural Amp Modeler Dual Chain";
@@ -49,8 +55,9 @@ LV2 plugin with two chained neural network machine learning guitar amplifier
 simulation models.
 
 Signal flow: Input > [In Lvl 1 > NAM 1 > Out Lvl 1] > [In Lvl 2 > NAM 2 >
-Out Lvl 2] > DC blocker > EQ > Output. Each NAM block can be enabled/disabled
-with its Enable toggle; a disabled block passes audio through unaffected.
+Out Lvl 2] > Cab IR > DC blocker > EQ > Output. Each NAM block and the cab
+can be enabled/disabled with its Enable toggle; a disabled block passes
+audio through unaffected.
 
 Models supported:
   Neural Amp Modeler (NAM): https://github.com/sdatkinson/neural-amp-modeler
@@ -59,7 +66,7 @@ Models supported:
 A large collection of models is available at https://www.tone3000.com
 """;
 
-	patch:writable <@NAM_LV2_ID@#model1>, <@NAM_LV2_ID@#model2>;
+	patch:writable <@NAM_LV2_ID@#model1>, <@NAM_LV2_ID@#model2>, <@NAM_LV2_ID@#cab>;
 
 	# Control
 	lv2:port [
@@ -149,6 +156,7 @@ A large collection of models is available at https://www.tone3000.com
 		lv2:minimum -20.0;
 		lv2:maximum 20.0;
 		units:unit units:db;
+@CAB_PORTS@
 @EQ_PORTS@
 	], [
 		a lv2:ControlPort, lv2:InputPort;

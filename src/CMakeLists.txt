@@ -40,6 +40,28 @@ set(NA_SOURCES ../deps/NeuralAudio/NeuralAudio/NeuralModel.h)
 
 add_library(neural_amp_modeler_dual SHARED ${SOURCES} ${NA_SOURCES})
 
+option(ENABLE_CAB "Enable cab IR convolution block (after NAM 2)" ON)
+
+if (ENABLE_CAB)
+	add_definitions(-DENABLE_CAB)
+	message(STATUS "Cab IR block enabled")
+
+	target_sources(neural_amp_modeler_dual PRIVATE
+		3rdparty/FFTConvolver/AudioFFT.cpp
+		3rdparty/FFTConvolver/FFTConvolver.cpp
+		3rdparty/FFTConvolver/TwoStageFFTConvolver.cpp
+		3rdparty/FFTConvolver/Utilities.cpp
+		cab_convolver.cpp)
+
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/cab_ports.ttl.in" CAB_PORTS)
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/cab_knobs.ttl.in" CAB_KNOBS)
+else()
+	message(STATUS "Cab IR block NOT enabled")
+
+	set(CAB_PORTS "")
+	set(CAB_KNOBS "")
+endif (ENABLE_CAB)
+
 target_include_directories(neural_amp_modeler_dual PUBLIC ../deps/NeuralAudio)
 target_include_directories(neural_amp_modeler_dual PUBLIC ../deps/lv2/include)
 target_include_directories(neural_amp_modeler_dual PUBLIC ../deps/denormal)
@@ -75,19 +97,44 @@ endif (ENABLE_DC_BLOCK)
 
 option(ENABLE_EQ "Enable 3-band EQ at the end of the chain" ON)
 
+# quality port index: first control port after the NAM blocks is 10 (indices
+# 4..9 are the NAM controls), +1 for the cab enable, +3 for the EQ
+set(QUALITY_INDEX 10)
+
+if (ENABLE_CAB)
+	math(EXPR QUALITY_INDEX "${QUALITY_INDEX} + 1")
+endif()
+
 if (ENABLE_EQ)
 	add_definitions(-DENABLE_EQ)
 	message(STATUS "EQ enabled")
 
+	# the EQ port indices depend on whether the cab enable port is present
+	set(EQ_BASE 10)
+
+	if (ENABLE_CAB)
+		math(EXPR EQ_BASE "${EQ_BASE} + 1")
+	endif()
+
+	math(EXPR EQ_I1 "${EQ_BASE} + 1")
+	math(EXPR EQ_I2 "${EQ_BASE} + 2")
+
 	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/eq_ports.ttl.in" EQ_PORTS)
 	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/eq_knobs.ttl.in" EQ_KNOBS)
-	set(QUALITY_INDEX 13)
+
+	string(REPLACE "@EQ_I0@" "${EQ_BASE}" EQ_PORTS "${EQ_PORTS}")
+	string(REPLACE "@EQ_I1@" "${EQ_I1}" EQ_PORTS "${EQ_PORTS}")
+	string(REPLACE "@EQ_I2@" "${EQ_I2}" EQ_PORTS "${EQ_PORTS}")
+	string(REPLACE "@EQ_I0@" "${EQ_BASE}" EQ_KNOBS "${EQ_KNOBS}")
+	string(REPLACE "@EQ_I1@" "${EQ_I1}" EQ_KNOBS "${EQ_KNOBS}")
+	string(REPLACE "@EQ_I2@" "${EQ_I2}" EQ_KNOBS "${EQ_KNOBS}")
+
+	math(EXPR QUALITY_INDEX "${QUALITY_INDEX} + 3")
 else()
 	message(STATUS "EQ NOT enabled")
 
 	set(EQ_PORTS "")
 	set(EQ_KNOBS "")
-	set(QUALITY_INDEX 10)
 endif (ENABLE_EQ)
 
 # Export the ttl template variables to the parent scope: the root
@@ -96,6 +143,8 @@ endif (ENABLE_EQ)
 # visible there.
 set(EQ_PORTS "${EQ_PORTS}" PARENT_SCOPE)
 set(EQ_KNOBS "${EQ_KNOBS}" PARENT_SCOPE)
+set(CAB_PORTS "${CAB_PORTS}" PARENT_SCOPE)
+set(CAB_KNOBS "${CAB_KNOBS}" PARENT_SCOPE)
 set(QUALITY_INDEX "${QUALITY_INDEX}" PARENT_SCOPE)
 
 set_target_properties(neural_amp_modeler_dual

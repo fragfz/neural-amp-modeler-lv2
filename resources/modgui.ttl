@@ -33,6 +33,7 @@
             lv2:index 9;
             lv2:symbol "output_level2";
             lv2:name "NAM2 Out";
+@CAB_KNOBS@
 @EQ_KNOBS@
         ], [
             lv2:index @QUALITY_INDEX@;
