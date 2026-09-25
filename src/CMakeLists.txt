@@ -64,6 +64,32 @@ else()
 	message(STATUS "Smart Bypass NOT enabled")
 endif (SMART_BYPASS_ENABLED)
 
+option(ENABLE_DC_BLOCK "Enable DC blocker at the end of the chain" ON)
+
+if (ENABLE_DC_BLOCK)
+	add_definitions(-DENABLE_DC_BLOCK)
+	message(STATUS "DC blocker enabled")
+else()
+	message(STATUS "DC blocker NOT enabled")
+endif (ENABLE_DC_BLOCK)
+
+option(ENABLE_EQ "Enable 3-band EQ at the end of the chain" ON)
+
+if (ENABLE_EQ)
+	add_definitions(-DENABLE_EQ)
+	message(STATUS "EQ enabled")
+
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/eq_ports.ttl.in" EQ_PORTS)
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/eq_knobs.ttl.in" EQ_KNOBS)
+	set(QUALITY_INDEX 13)
+else()
+	message(STATUS "EQ NOT enabled")
+
+	set(EQ_PORTS "")
+	set(EQ_KNOBS "")
+	set(QUALITY_INDEX 10)
+endif (ENABLE_EQ)
+
 set_target_properties(neural_amp_modeler_dual
 	PROPERTIES
 	CXX_VISIBILITY_PRESET hidden

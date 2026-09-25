@@ -45,9 +45,10 @@
     display:inline;
 }
 
+/* dual chain: all knobs in one row, in audio-flow order */
 .mod-pedal-nam .group1 {
-    top:86px;
-    left:22px;
+    top:38px;
+    left:12px;
 }
 
 .mod-pedal-nam .group2 {
@@ -58,29 +59,27 @@
 .mod-pedal-nam .mod-control-group .mod-knob .mod-knob-title {
     text-align: center;
     color:white;
+    font-size:8px;
+    width:52px;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
 }
 
 .mod-pedal-nam .mod-control-group .mod-knob {
     overflow:hidden;
     position:relative;
     display:inline-block;
-}
-
-.mod-pedal-nam .mod-control-group .mod-knob:first-child {
-    margin-left: 0px;
-}
-
-.mod-pedal-nam .mod-control-group .mod-knob:last-child {
-    margin-left: 315px;
+    margin:0 2px;
 }
 
 .mod-pedal-nam .mod-control-group .mod-knob .mod-knob-image {
     background-image:url(/resources/knob.png{{{ns}}});
     background-position:left center;
     background-repeat:no-repeat;
-    background-size:5000px 100px;
-    height:100px;
-    width:100px;
+    background-size:2400px 48px;
+    height:48px;
+    width:48px;
     cursor:pointer;
 }
 

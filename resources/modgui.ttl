@@ -11,19 +11,32 @@
         modgui:discussionURL <https://forum.mod.audio/t/neural-amp-modeler/10112> ;
         modgui:port [
             lv2:index 4;
+            lv2:symbol "enable1";
+            lv2:name "NAM1 Enable";
+        ], [
+            lv2:index 5;
             lv2:symbol "input_level1";
             lv2:name "NAM1 In";
         ], [
-            lv2:index 5;
+            lv2:index 6;
             lv2:symbol "output_level1";
             lv2:name "NAM1 Out";
         ], [
-            lv2:index 6;
+            lv2:index 7;
+            lv2:symbol "enable2";
+            lv2:name "NAM2 Enable";
+        ], [
+            lv2:index 8;
             lv2:symbol "input_level2";
             lv2:name "NAM2 In";
         ], [
-            lv2:index 7;
+            lv2:index 9;
             lv2:symbol "output_level2";
             lv2:name "NAM2 Out";
+@EQ_KNOBS@
+        ], [
+            lv2:index @QUALITY_INDEX@;
+            lv2:symbol "quality_scale";
+            lv2:name "Quality";
         ];
     ].
