@@ -90,6 +90,14 @@ else()
 	set(QUALITY_INDEX 10)
 endif (ENABLE_EQ)
 
+# Export the ttl template variables to the parent scope: the root
+# CMakeLists.txt runs configure_file() on the ttl templates, and normal
+# variables set here (in the add_subdirectory() child scope) are not
+# visible there.
+set(EQ_PORTS "${EQ_PORTS}" PARENT_SCOPE)
+set(EQ_KNOBS "${EQ_KNOBS}" PARENT_SCOPE)
+set(QUALITY_INDEX "${QUALITY_INDEX}" PARENT_SCOPE)
+
 set_target_properties(neural_amp_modeler_dual
 	PROPERTIES
 	CXX_VISIBILITY_PRESET hidden
