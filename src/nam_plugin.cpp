@@ -11,10 +11,6 @@
 #define DC_BLOCKER_HZ 5.0f
 #endif
 
-#ifndef BYPASS_DB_THRESHOLD
-#define BYPASS_DB_THRESHOLD -100
-#endif
-
 namespace NAM {
 	Plugin::Plugin()
 	{
@@ -29,8 +25,6 @@ namespace NAM {
 
 		bufA.resize(maxBufferSize);
 		bufB.resize(maxBufferSize);
-
-		bypassThresholdLinear = powf(10, BYPASS_DB_THRESHOLD * 0.05f);
 
 //		NeuralAudio::NeuralModel::SetLSTMLoadMode(
 //#ifdef LSTM_PREFER_NAM
@@ -62,6 +56,10 @@ namespace NAM {
 		this->sampleRate = sampleRate;
 
 		dcCoefficient = 1.0f - ((float)(2.0 * M_PI * DC_BLOCKER_HZ) / (float)sampleRate);
+
+#ifdef ENABLE_EQ
+		eq.Init((float)sampleRate);
+#endif
 
 		loader.SetExternalSampleRate((int)sampleRate);
 
@@ -217,18 +215,6 @@ namespace NAM {
 		nam->currentModelPaths[slot] = msg->path;
 		assert(nam->currentModelPaths[slot].capacity() >= MAX_FILE_NAME + 1);
 
-		if (nam->currentModels[slot] != nullptr)
-		{
-			int receptiveFieldSize = nam->currentModels[slot]->GetReceptiveFieldSize();
-
-			if (receptiveFieldSize > -1)
-			{
-				// A newly loaded model is prewarmed to have a silent sample history
-				nam->silentSamples[slot] = receptiveFieldSize;
-				nam->smartBypassed[slot] = true;
-			}
-		}
-
 		// send reply
 		nam->schedule->schedule_work(nam->schedule->handle, sizeof(reply), &reply);
 
@@ -336,204 +322,195 @@ namespace NAM {
 			model2LoudnessAdjustmentDB = currentModels[1]->GetRecommendedOutputDBAdjustment();
 		}
 
-		// --- Stage 1: input level 1 (audio_in -> bufA) ---
+		const bool enableBlock1 = *(ports.enable1) > 0.5f;
+		const bool enableBlock2 = *(ports.enable2) > 0.5f;
 
-		float desiredInputLevel = powf(10, (*(ports.input_level1) + model1InputAdjustmentDB) * 0.05f);
+		// --- Block 1: input level 1 > NAM 1 > output level 1 (audio_in -> bufB) ---
 
-		if (fabs(desiredInputLevel - inputLevel[0]) > SMOOTH_EPSILON)
+		if (enableBlock1)
 		{
-			level = inputLevel[0];
+			// input level 1 (ports.audio_in -> bufA)
 
-			for (unsigned int i = 0; i < n_samples; i++)
+			float desiredInLevel = powf(10, (*(ports.input_level1) + model1InputAdjustmentDB) * 0.05f);
+
+			if (fabs(desiredInLevel - inputLevel[0]) > SMOOTH_EPSILON)
 			{
-				// do very basic smoothing
-				level = (.99f * level) + (.01f * desiredInputLevel);
+				level = inputLevel[0];
 
-				bufA[i] = ports.audio_in[i] * level;
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					// do very basic smoothing
+					level = (.99f * level) + (.01f * desiredInLevel);
+
+					bufA[i] = ports.audio_in[i] * level;
+				}
+
+				inputLevel[0] = level;
+			}
+			else
+			{
+				level = inputLevel[0] = desiredInLevel;
+
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					bufA[i] = ports.audio_in[i] * level;
+				}
 			}
 
-			inputLevel[0] = level;
+			// NAM 1 (bufA in place)
+
+			if (currentModels[0] != nullptr)
+			{
+				currentModels[0]->Process(bufA.data(), bufA.data(), n_samples);
+			}
+
+			// output level 1 (bufA -> bufB)
+
+			float desiredOutLevel = powf(10, (*(ports.output_level1) + model1LoudnessAdjustmentDB) * 0.05f);
+
+			if (fabs(desiredOutLevel - outputLevel[0]) > SMOOTH_EPSILON)
+			{
+				level = outputLevel[0];
+
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					// do very basic smoothing
+					level = (.99f * level) + (.01f * desiredOutLevel);
+
+					bufB[i] = bufA[i] * level;
+				}
+
+				outputLevel[0] = level;
+			}
+			else
+			{
+				level = outputLevel[0] = desiredOutLevel;
+
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					bufB[i] = bufA[i] * level;
+				}
+			}
 		}
 		else
 		{
-			level = inputLevel[0] = desiredInputLevel;
-
-			for (unsigned int i = 0; i < n_samples; i++)
-			{
-				bufA[i] = ports.audio_in[i] * level;
-			}
+			// block bypassed: pass the signal through untouched
+			memcpy(bufB.data(), ports.audio_in, n_samples * sizeof(float));
 		}
 
-		// --- Stage 2: NAM 1 (bufA in place) ---
+		// --- Block 2: input level 2 > NAM 2 > output level 2 (bufB -> audio_out) ---
 
-		bool bypass1 = false;
-
-#ifdef SMART_BYPASS_ENABLED
-		if (currentModels[0] != nullptr)
+		if (enableBlock2)
 		{
-			int receptiveFieldSamples = currentModels[0]->GetReceptiveFieldSize();
+			// input level 2 (bufB -> bufB)
 
-			if (receptiveFieldSamples > -1)
+			float desiredInLevel = powf(10, (*(ports.input_level2) + model2InputAdjustmentDB) * 0.05f);
+
+			if (fabs(desiredInLevel - inputLevel[1]) > SMOOTH_EPSILON)
 			{
+				level = inputLevel[1];
+
 				for (unsigned int i = 0; i < n_samples; i++)
 				{
-					if (abs(bufA[i]) <= bypassThresholdLinear)
-					{
-						silentSamples[0]++;
-					}
-					else
-					{
-						silentSamples[0] = 0;
-					}
+					// do very basic smoothing
+					level = (.99f * level) + (.01f * desiredInLevel);
+
+					bufB[i] = bufB[i] * level;
 				}
 
-				if (silentSamples[0] >= (uint32_t)receptiveFieldSamples)
-				{
-					silentSamples[0] = (uint32_t)receptiveFieldSamples;	// Prevent silentSamples growing and eventually overflowing uint32
-
-					bypass1 = smartBypassed[0];
-					smartBypassed[0] = true;	// If we aren't already, we'll be bypassed on the next process call
-				}
-				else
-					smartBypassed[0] = false;
+				inputLevel[1] = level;
 			}
+			else
+			{
+				level = inputLevel[1] = desiredInLevel;
+
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					bufB[i] = bufB[i] * level;
+				}
+			}
+
+			// NAM 2 (bufB in place)
+
+			if (currentModels[1] != nullptr)
+			{
+				currentModels[1]->Process(bufB.data(), bufB.data(), n_samples);
+			}
+
+			// output level 2 (bufB -> ports.audio_out)
+
+			float desiredOutLevel = powf(10, (*(ports.output_level2) + model2LoudnessAdjustmentDB) * 0.05f);
+
+			if (fabs(desiredOutLevel - outputLevel[1]) > SMOOTH_EPSILON)
+			{
+				level = outputLevel[1];
+
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					// do very basic smoothing
+					level = (.99f * level) + (.01f * desiredOutLevel);
+
+					ports.audio_out[i] = bufB[i] * level;
+				}
+
+				outputLevel[1] = level;
+			}
+			else
+			{
+				level = outputLevel[1] = desiredOutLevel;
+
+				for (unsigned int i = 0; i < n_samples; i++)
+				{
+					ports.audio_out[i] = bufB[i] * level;
+				}
+			}
+		}
+		else
+		{
+			// block bypassed: pass the signal through untouched
+			memcpy(ports.audio_out, bufB.data(), n_samples * sizeof(float));
+		}
+
+		// --- Global DC blocker (end of chain, before the EQ) ---
+
+#ifdef ENABLE_DC_BLOCK
+		for (unsigned int i = 0; i < n_samples; i++)
+		{
+			const float dcInput = ports.audio_out[i];
+
+			ports.audio_out[i] = dcInput - dcPrevInput + dcCoefficient * dcPrevOutput;
+
+			dcPrevInput = dcInput;
+			dcPrevOutput = ports.audio_out[i];
 		}
 #endif
 
-		if (currentModels[0] != nullptr && *(ports.enable1) > 0.5f && !bypass1)
+#ifdef ENABLE_EQ
+		// --- Global 3-band EQ (after the DC blocker) ---
+
+		if (*(ports.eq_bass) != lastEqBass)
 		{
-			currentModels[0]->Process(bufA.data(), bufA.data(), n_samples);
+			eq.SetBass(*(ports.eq_bass));
+			lastEqBass = *(ports.eq_bass);
 		}
 
-		// --- Stage 3: DC blocker + output level 1 + input level 2 (bufA -> bufB) ---
-
-		// DC blocking only makes sense when NAM 1 actually ran
-		const bool useDC = currentModels[0] != nullptr && *(ports.enable1) > 0.5f;
-
-		float desiredOut1Level = powf(10, (*(ports.output_level1) + model1LoudnessAdjustmentDB) * 0.05f);
-		float desiredIn2Level = powf(10, (*(ports.input_level2) + model2InputAdjustmentDB) * 0.05f);
-
-		if (fabs(desiredOut1Level - outputLevel[0]) > SMOOTH_EPSILON || fabs(desiredIn2Level - inputLevel[1]) > SMOOTH_EPSILON)
+		if (*(ports.eq_mid) != lastEqMid)
 		{
-			float level1 = outputLevel[0];
-			float level2 = inputLevel[1];
-			for (unsigned int i = 0; i < n_samples; i++)
-			{
-				// do very basic smoothing
-				level1 = (.99f * level1) + (.01f * desiredOut1Level);
-				level2 = (.99f * level2) + (.01f * desiredIn2Level);
-
-				float sample = bufA[i];
-
-				if (useDC)
-				{
-					// dc blocker
-					float dcInput = sample;
-
-					sample = sample - dcPrevInput + dcCoefficient * dcPrevOutput;
-
-					dcPrevInput = dcInput;
-					dcPrevOutput = sample;
-				}
-
-				bufB[i] = sample * level1 * level2;
-			}
-
-			outputLevel[0] = level1;
-			inputLevel[1] = level2;
-		}
-		else
-		{
-			float level1 = outputLevel[0] = desiredOut1Level;
-			float level2 = inputLevel[1] = desiredIn2Level;
-
-			for (unsigned int i = 0; i < n_samples; i++)
-			{
-				float sample = bufA[i];
-
-				if (useDC)
-				{
-					// dc blocker
-					float dcInput = sample;
-
-					sample = sample - dcPrevInput + dcCoefficient * dcPrevOutput;
-
-					dcPrevInput = dcInput;
-					dcPrevOutput = sample;
-				}
-
-				bufB[i] = sample * level1 * level2;
-			}
+			eq.SetMid(*(ports.eq_mid));
+			lastEqMid = *(ports.eq_mid);
 		}
 
-		// --- Stage 4: NAM 2 (bufB in place) ---
-
-		bool bypass2 = false;
-
-#ifdef SMART_BYPASS_ENABLED
-		if (currentModels[1] != nullptr)
+		if (*(ports.eq_treble) != lastEqTreble)
 		{
-			int receptiveFieldSamples = currentModels[1]->GetReceptiveFieldSize();
+			eq.SetTreble(*(ports.eq_treble));
+			lastEqTreble = *(ports.eq_treble);
+		}
 
-			if (receptiveFieldSamples > -1)
-			{
-				for (unsigned int i = 0; i < n_samples; i++)
-				{
-					if (abs(bufB[i]) <= bypassThresholdLinear)
-					{
-						silentSamples[1]++;
-					}
-					else
-					{
-						silentSamples[1] = 0;
-					}
-				}
-
-				if (silentSamples[1] >= (uint32_t)receptiveFieldSamples)
-				{
-					silentSamples[1] = (uint32_t)receptiveFieldSamples;	// Prevent silentSamples growing and eventually overflowing uint32
-
-					bypass2 = smartBypassed[1];
-					smartBypassed[1] = true;	// If we aren't already, we'll be bypassed on the next process call
-				}
-				else
-					smartBypassed[1] = false;
-			}
+		for (unsigned int i = 0; i < n_samples; i++)
+		{
+			ports.audio_out[i] = eq.Process(ports.audio_out[i]);
 		}
 #endif
-
-		if (currentModels[1] != nullptr && *(ports.enable2) > 0.5f && !bypass2)
-		{
-			currentModels[1]->Process(bufB.data(), bufB.data(), n_samples);
-		}
-
-		// --- Stage 5: output level 2 (bufB -> audio_out) ---
-
-		float desiredOutputLevel = powf(10, (*(ports.output_level2) + model2LoudnessAdjustmentDB) * 0.05f);
-
-		if (fabs(desiredOutputLevel - outputLevel[1]) > SMOOTH_EPSILON)
-		{
-			level = outputLevel[1];
-
-			for (unsigned int i = 0; i < n_samples; i++)
-			{
-				// do very basic smoothing
-				level = (.99f * level) + (.01f * desiredOutputLevel);
-
-				ports.audio_out[i] = bufB[i] * level;
-			}
-
-			outputLevel[1] = level;
-		}
-		else
-		{
-			level = outputLevel[1] = desiredOutputLevel;
-
-			for (unsigned int i = 0; i < n_samples; i++)
-			{
-				ports.audio_out[i] = bufB[i] * level;
-			}
-		}
 	}
 
 	uint32_t Plugin::options_get(LV2_Handle, LV2_Options_Option*)
