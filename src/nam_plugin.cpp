@@ -696,9 +696,9 @@ namespace NAM {
 
 		const LV2_URID modelPathKeys[kNumSlots] = { nam->uris.model1_Path, nam->uris.model2_Path, nam->uris.model3_Path };
 
-		bool haveSlot[kNumSlots] = { false, false };
-		const void* values[kNumSlots] = { nullptr, nullptr };
-		uint32_t types[kNumSlots] = { 0, 0 };
+		bool haveSlot[kNumSlots] = { false, false, false };
+		const void* values[kNumSlots] = { nullptr, nullptr, nullptr };
+		uint32_t types[kNumSlots] = { 0, 0, 0 };
 
 		// Get model path for each slot. Fall back to the legacy single-model
 		// state key, restored into slot 0.
@@ -708,7 +708,10 @@ namespace NAM {
 		values[1] = retrieve(handle, modelPathKeys[1], &size, &types[1], &valflags);
 		haveSlot[1] = values[1] != nullptr && types[1] == nam->uris.atom_Path;
 
-		if (!haveSlot[0] && !haveSlot[1])
+		values[2] = retrieve(handle, modelPathKeys[2], &size, &types[2], &valflags);
+		haveSlot[2] = values[2] != nullptr && types[2] == nam->uris.atom_Path;
+
+		if (!haveSlot[0] && !haveSlot[1] && !haveSlot[2])
 		{
 			values[0] = retrieve(handle, nam->uris.model_Path, &size, &types[0], &valflags);
 			haveSlot[0] = values[0] != nullptr && types[0] == nam->uris.atom_Path;
