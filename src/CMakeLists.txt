@@ -81,8 +81,7 @@ target_include_directories(${BINARY_NAME} PUBLIC ../deps/denormal)
 
 target_link_libraries(${BINARY_NAME} PRIVATE NeuralAudio)
 
-# inject
- the full plugin URI (follows the dynamic name suffix) into the code
+# inject the full plugin URI (follows the dynamic name suffix) into the code
 target_compile_definitions(${BINARY_NAME} PRIVATE "PLUGIN_URI=\"${NAM_LV2_ID}\"")
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})
