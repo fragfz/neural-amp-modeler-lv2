@@ -82,7 +82,7 @@ static const void* extension_data(const char* uri)
 
 static const LV2_Descriptor descriptor =
 {
-	"http://github.com/fragfz/neural-amp-modeler-lv2-t",
+	PLUGIN_URI,
 	instantiate,
 	connect_port,
 	activate,

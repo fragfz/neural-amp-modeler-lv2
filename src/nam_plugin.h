@@ -5,8 +5,6 @@
 #include <cstdint>
 #include <random>
 #include <string_view>
-#include <string>
-#include <vector>
 
 // LV2
 #include <lv2/core/lv2.h>
@@ -25,162 +23,15 @@
 
 #include <NeuralAudio/NeuralModel.h>
 
-#define PlUGIN_URI "http://github.com/fragfz/neural-amp-modeler-lv2-t"
-#define MODEL_URI PlUGIN_URI "#model"
-#define CAB_URI PlUGIN_URI "#cab"
-
-#ifdef ENABLE_EQ
-// Global 3-band EQ (low shelf, peaking mid, high shelf) at the end of the
-// chain, after the DC blocker. RBJ audio-cookbook biquads, settings matching
-// the tone3000-plugin tone stack (based on tone-3000/nam-pedal eq3band.h).
-class EqBiquad
-{
-public:
-	void Reset()
-	{
-		b0 = 1.0f;
-		b1 = b2 = a1 = a2 = 0.0f;
-		z1 = z2 = 0.0f;
-	}
-
-	// transposed direct form II
-	inline float Process(float x)
-	{
-		float y = b0 * x + z1;
-		z1 = b1 * x - a1 * y + z2;
-		z2 = b2 * x - a2 * y;
-		return y;
-	}
-
-	// store coefficients normalized by a0
-	void SetCoeffs(float B0, float B1, float B2, float A0, float A1, float A2)
-	{
-		const float inv = 1.0f / A0;
-		b0 = B0 * inv;
-		b1 = B1 * inv;
-		b2 = B2 * inv;
-		a1 = A1 * inv;
-		a2 = A2 * inv;
-	}
-
-private:
-	float b0 = 1.0f;
-	float b1 = 0.0f;
-	float b2 = 0.0f;
-	float a1 = 0.0f;
-	float a2 = 0.0f;
-	float z1 = 0.0f;
-	float z2 = 0.0f;
-};
-
-class Eq3Band
-{
-public:
-	void Init(float sampleRate)
-	{
-		sr = sampleRate;
-		low.Reset();
-		mid.Reset();
-		high.Reset();
-		SetBass(0.0f);
-		SetMid(0.0f);
-		SetTreble(0.0f);
-	}
-
-	// gain_db is the boost/cut for each band (0 dB == flat)
-	void SetBass(float gainDb) { LowShelf(low, kBassFreq, gainDb); }
-
-	void SetMid(float gainDb)
-	{
-		// wider bell on boost, narrower notch on cut
-		const float q = (gainDb >= 0.0f) ? kMidQBoost : kMidQCut;
-		Peaking(mid, kMidFreq, q, gainDb);
-	}
-
-	void SetTreble(float gainDb) { HighShelf(high, kTrebleFreq, gainDb); }
-
-	inline float Process(float x)
-	{
-		return high.Process(mid.Process(low.Process(x)));
-	}
-
-private:
-	// band parameters matched to the NAM tone stack (tone3000-plugin)
-	static constexpr float kBassFreq = 150.0f;
-	static constexpr float kMidFreq = 425.0f;
-	static constexpr float kMidQBoost = 0.7f;
-	static constexpr float kMidQCut = 1.5f;
-	static constexpr float kTrebleFreq = 1800.0f;
-	// S=1 gives alpha = sw/sqrt(2), i.e. Q=0.707 shelves
-	static constexpr float kShelfSlope = 1.0f;
-	static constexpr float kPi = 3.14159265358979323846f;
-
-	void Peaking(EqBiquad& bq, float f0, float q, float db)
-	{
-		const float A = powf(10.0f, db / 40.0f);
-		const float w0 = 2.0f * kPi * f0 / sr;
-		const float cw = cosf(w0);
-		const float sw = sinf(w0);
-		const float alpha = sw / (2.0f * q);
-
-		bq.SetCoeffs(
-			1.0f + alpha * A,
-			-2.0f * cw,
-			1.0f - alpha * A,
-			1.0f + alpha / A,
-			-2.0f * cw,
-			1.0f - alpha / A
-		);
-	}
-
-	void LowShelf(EqBiquad& bq, float f0, float db)
-	{
-		const float A = powf(10.0f, db / 40.0f);
-		const float w0 = 2.0f * kPi * f0 / sr;
-		const float cw = cosf(w0);
-		const float sw = sinf(w0);
-		const float alpha = sw / 2.0f * sqrtf((A + 1.0f / A) * (1.0f / kShelfSlope - 1.0f) + 2.0f);
-		const float beta = 2.0f * sqrtf(A) * alpha;
-		const float Ap1 = A + 1.0f;
-		const float Am1 = A - 1.0f;
-
-		bq.SetCoeffs(
-			A * (Ap1 - Am1 * cw + beta),
-			2.0f * A * (Am1 - Ap1 * cw),
-			A * (Ap1 - Am1 * cw - beta),
-			Ap1 + Am1 * cw + beta,
-			-2.0f * (Am1 + Ap1 * cw),
-			Ap1 + Am1 * cw - beta
-		);
-	}
-
-	void HighShelf(EqBiquad& bq, float f0, float db)
-	{
-		const float A = powf(10.0f, db / 40.0f);
-		const float w0 = 2.0f * kPi * f0 / sr;
-		const float cw = cosf(w0);
-		const float sw = sinf(w0);
-		const float alpha = sw / 2.0f * sqrtf((A + 1.0f / A) * (1.0f / kShelfSlope - 1.0f) + 2.0f);
-		const float beta = 2.0f * sqrtf(A) * alpha;
-		const float Ap1 = A + 1.0f;
-		const float Am1 = A - 1.0f;
-
-		bq.SetCoeffs(
-			A * (Ap1 + Am1 * cw + beta),
-			-2.0f * A * (Am1 + Ap1 * cw),
-			A * (Ap1 + Am1 * cw - beta),
-			Ap1 - Am1 * cw + beta,
-			2.0f * (Am1 - Ap1 * cw),
-			Ap1 - Am1 * cw - beta
-		);
-	}
-
-	float sr = 48000.0f;
-	EqBiquad low;
-	EqBiquad mid;
-	EqBiquad high;
-};
+// Full plugin URI is injected by CMake (-DPLUGIN_URI) so it follows the
+// dynamically computed name suffix (_T + C/D/E per enabled DSP block).
+// The fallback keeps standalone builds working.
+#ifndef PLUGIN_URI
+#define PLUGIN_URI "http://github.com/fragfz/neural-amp-modeler-lv2-t"
 #endif
+
+#define MODEL_URI PLUGIN_URI "#model"
+#define CAB_URI PLUGIN_URI "#cab"
 
 namespace NAM {
 	static constexpr unsigned int MAX_FILE_NAME = 1024;
@@ -188,10 +39,7 @@ namespace NAM {
 	enum LV2WorkType {
 		kWorkTypeLoad,
 		kWorkTypeSwitch,
-		kWorkTypeFree,
-		kWorkTypeLoadCab,
-		kWorkTypeSwitchCab,
-		kWorkTypeFreeCab
+		kWorkTypeFree
 	};
 
 	struct LV2LoadModelMsg {
@@ -210,27 +58,8 @@ namespace NAM {
 		NeuralAudio::NeuralModel* model;
 	};
 
-	class CabConvolver;
-
-	struct LV2LoadCabMsg {
-		LV2WorkType type;
-		char path[MAX_FILE_NAME];
-	};
-
-	struct LV2SwitchCabMsg {
-		LV2WorkType type;
-		char path[MAX_FILE_NAME];
-		CabConvolver* convolver;
-	};
-
-	struct LV2FreeCabMsg {
-		LV2WorkType type;
-		CabConvolver* convolver;
-	};
-
 	class Plugin {
 	public:
-		// order matches lv2:index in the bundle ttl
 		struct Ports {
 			const LV2_Atom_Sequence* control;
 			LV2_Atom_Sequence* notify;
@@ -239,14 +68,6 @@ namespace NAM {
 			float* input_level;
 			float* output_level;
 			float* quality_scale;
-#ifdef ENABLE_CAB
-			float* cab_enable;
-#endif
-#ifdef ENABLE_EQ
-			float* eq_bass;
-			float* eq_mid;
-			float* eq_treble;
-#endif
 		};
 
 		Ports ports = {};
@@ -260,16 +81,8 @@ namespace NAM {
 		NeuralAudio::NeuralModelLoader loader;
 		NeuralAudio::NeuralModel* currentModel = nullptr;
 		std::string currentModelPath;
-
-#ifdef ENABLE_CAB
-		CabConvolver* cabConvolver = nullptr;
-		std::string cabPath;
-#endif
-
-		// global DC blocker state (end of chain, before the EQ)
 		float prevDCInput = 0;
 		float prevDCOutput = 0;
-		float dcCoefficient = 0;
 
 		Plugin();
 		~Plugin();
@@ -280,10 +93,6 @@ namespace NAM {
 		void process(uint32_t n_samples) noexcept;
 
 		void write_current_path();
-
-#ifdef ENABLE_CAB
-		void write_cab_path();
-#endif
 
 		static uint32_t options_get(LV2_Handle instance, LV2_Options_Option* options);
 		static uint32_t options_set(LV2_Handle instance, const LV2_Options_Option* options);
@@ -311,9 +120,6 @@ namespace NAM {
 			LV2_URID patch_value;
 			LV2_URID units_frame;
 			LV2_URID model_Path;
-#ifdef ENABLE_CAB
-			LV2_URID cab_Path;
-#endif
 		};
 
 		URIs uris = {};
@@ -321,23 +127,11 @@ namespace NAM {
 		LV2_Atom_Forge atom_forge = {};
 		LV2_Atom_Forge_Frame sequence_frame;
 
-		// staging buffers for the cab convolver (it must not run in place);
-		// pre-allocated off the audio thread and only ever grown
-		std::vector<float> scratch;
-		std::vector<float> scratch2;
-
 		float inputLevel = 0;
 		float outputLevel = 0;
 		int32_t maxBufferSize = 512;
 		float bypassThresholdLinear = 0;
 		uint32_t silentSamples = 0;
 		bool smartBypassed = true;
-
-#ifdef ENABLE_EQ
-		Eq3Band eq;
-		float lastEqBass = 0;
-		float lastEqMid = 0;
-		float lastEqTreble = 0;
-#endif
 	};
 }

@@ -20,16 +20,9 @@
 	rdfs:label "Neural Model";
 	rdfs:range atom:Path.
 
-
-<@NAM_LV2_ID@#cab>
-	a lv2:Parameter;
-	mod:fileTypes "cabsim";
-	rdfs:label "Cab IR";
-	rdfs:range atom:Path.
-
 <@NAM_LV2_ID@>
 	a lv2:Plugin, lv2:SimulatorPlugin, doap:Project;
-	doap:name "Neural Amp Modeler_T";
+	doap:name "Neural Amp Modeler@NAM_NAME_SUFFIX@";
 	lv2:project <@NAM_LV2_ID@>;
 	lv2:minorVersion @PROJECT_VERSION_MINOR@;
 	lv2:microVersion @PROJECT_VERSION_PATCH@;
@@ -55,7 +48,7 @@ Models supported:
 A large collection of models is available at https://www.tone3000.com
 """;
 
-	patch:writable <@NAM_LV2_ID@#model>, <@NAM_LV2_ID@#cab>;
+	patch:writable <@NAM_LV2_ID@#model>;
 
 	# Control
 	lv2:port [
@@ -116,7 +109,4 @@ A large collection of models is available at https://www.tone3000.com
 		lv2:default 1.0;
 		lv2:minimum 0.0;
 		lv2:maximum 1.0;
-	],
-@CAB_PORTS@
-@EQ_PORTS@
 	].
