@@ -83,7 +83,8 @@ namespace NAM {
 				schedule = static_cast<LV2_Worker_Schedule*>(features[i]->data);
 			else if (std::string(features[i]->URI) == std::string(LV2_LOG__log))
 				logger.log = static_cast<LV2_Log_Log*>(features[i]->data);
-			else if (std::string(features[i]->URI) == std::string(LV2_OPTIONS__options))
+			else if (std::string(features[i]->URI) == 
+std::string(LV2_OPTIONS__options))
 				options = static_cast<LV2_Options_Option*>(features[i]->data);
 		}
 	
@@ -149,7 +150,8 @@ namespace NAM {
 					// load model from path
 					const size_t pathlen = strlen(msg->path);
 
-					if (pathlen == 0 || pathlen >= MAX_FILE_NAME)
+					if (pathlen == 0 ||
+ pathlen >= MAX_FILE_NAME)
 					{
 						// avoid logging an error on an empty path.
 						// but do clear the model.
@@ -241,7 +243,8 @@ namespace NAM {
 	}
 
 	// runs on RT, right after process(), must not block or [de]allocate memory
-	LV2_Worker_Status Plugin::work_response(LV2_Handle instance, uint32_t size,	const void* data)
+	LV2_Worker_Status Plugin::work_re
+sponse(LV2_Handle instance, uint32_t size,	const void* data)
 	{
 		switch (*(const LV2WorkType*)data)
 		{
@@ -320,7 +323,8 @@ namespace NAM {
 		}
 	}
 
-	void Plugin::process(uint32_t n_samples) noexcept
+	void 
+Plugin::process(uint32_t n_samples) noexcept
 	{
 		lv2_atom_forge_set_buffer(&atom_forge, (uint8_t*)ports.notify, ports.notify->atom.size);
 		lv2_atom_forge_sequence_head(&atom_forge, &sequence_frame, uris.units_frame);
@@ -384,7 +388,8 @@ namespace NAM {
 		{
 			if (*(ports.quality_scale) != currentModel->GetQualityScaleFactor())
 			{
-				currentModel->SetQualityScaleFactor(*(ports.quality_scale));
+				cu
+rrentModel->SetQualityScaleFactor(*(ports.quality_scale));
 			}
 
 			modelInputAdjustmentDB = currentModel->GetRecommendedInputDBAdjustment();
@@ -468,22 +473,36 @@ namespace NAM {
 				// (true analog capture output level) instead of loudness normalization,
 				// like the tone3000 / official NAM plugin "Calibrated" output mode:
 				// adjustment = model_output_level_dBu - interface_dBu.
-				const std::string modelOutputLevelDbu = currentModel->GetMetadata("output_level_dbu");
-
-				if (!modelOutputLevelDbu.empty())
+				// The value depends only on the loaded model, so parse it once per
+				// model and cache it; this keeps GetMetadata's string allocation off
+				// the audio thread (RT safety) and removes the per-block CPU cost.
+				if (calibratedAdjustmentModel != currentModel)
 				{
-					char* parseEnd = nullptr;
+					calibratedAdjustmentModel = currentModel;
+					cachedCalibratedValid = false;
 
-					const float outputLevelDbu = strtof(modelOutputLevelDbu.c_str(), &parseEnd);
+					const std::string modelOutputLevelDbu = currentModel->GetMetadata("output_level_dbu");
 
-					if (parseEnd != nullptr && *parseEnd == '\0' && outputLevelDbu > -60.0f && outputLevelDbu < 60.0f)
+					if (!modelOutputLevelDbu.empty())
 					{
-						modelLoudnessAdjustmentDB = outputLevelDbu - currentModel->GetAudioInputLevelDBu();
+						char* parseEnd = nullptr;
+
+						const float outputLevelDbu = strtof(modelOutputLevelDbu.c_str(), &parseEnd);
+
+						if (parseEnd != nullptr && *parseEnd == '\0' && outputLevelDbu > -60.0f && outputLevelDbu < 60.0f)
+						{
+							cachedCalibratedAdjustmentDB = outputLevelDbu - currentModel->GetAudioInputLevelDBu();
+							cachedCalibratedValid = true;
+						}
 					}
+				}
+
+				if (cachedCalibratedValid)
+				{
+					modelLoudnessAdjustmentDB = cachedCalibratedAdjustmentDB;
 				}
 			}
 		}
-
 		// Convert output level from db
 		float desiredOutputLevel = powf(10, (*(ports.output_level) + modelLoudnessAdjustmentDB) * 0.05f);
 
@@ -530,7 +549,8 @@ namespace NAM {
 				// and discarding the result
 				memcpy(scratch.data(), ports.audio_out, n_samples * sizeof(float));
 
-				cabConvolver->Process(scratch.data(), scratch2.data(), n_samples);
+				cabConvolver->Process(scratch.data(), scratch2.data(), n_sample
+s);
 			}
 		}
 #endif
@@ -619,7 +639,8 @@ namespace NAM {
 
 		if (map_path == nullptr)
 		{
-			lv2_log_error(&nam->logger, "LV2_STATE__mapPath unsupported by host\n");
+			l
+v2_log_error(&nam->logger, "LV2_STATE__mapPath unsupported by host\n");
 
 			return LV2_STATE_ERR_NO_FEATURE;
 		}
@@ -685,7 +706,8 @@ namespace NAM {
 
 		NAM::LV2LoadModelMsg msg = { NAM::kWorkTypeLoad, {} };
 
-		LV2_State_Status result = LV2_STATE_SUCCESS;
+		LV
+2_State_Status result = LV2_STATE_SUCCESS;
 
 		// Check if a path is set
 		if (!value || (type != nam->uris.atom_Path))
@@ -761,7 +783,8 @@ namespace NAM {
 
 			size_t pathLen = strlen(path);
 
-			if (pathLen >= MAX_FILE_NAME)
+			if (
+pathLen >= MAX_FILE_NAME)
 			{
 				lv2_log_error(&nam->logger, "Cab IR path is too long (max %u chars)\n", MAX_FILE_NAME);
 				result = LV2_STATE_ERR_UNKNOWN;

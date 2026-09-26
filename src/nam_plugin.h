@@ -96,7 +96,8 @@ namespace NAM {
 			float* output_level;
 			float* quality_scale;
 #ifdef ENABLE_CAB
-			float* cab_enable;
+			flo
+at* cab_enable;
 #endif
 #ifdef ENABLE_EQ
 			float* eq_bass;
@@ -117,6 +118,12 @@ namespace NAM {
 		NeuralAudio::NeuralModelLoader loader;
 		NeuralAudio::NeuralModel* currentModel = nullptr;
 		std::string currentModelPath;
+
+		// cached "Out Calibrated" output adjustment for the current model
+		// (parsed once per loaded model in process(), never per audio block)
+		const NeuralAudio::NeuralModel* calibratedAdjustmentModel = nullptr;
+		float cachedCalibratedAdjustmentDB = 0;
+		bool cachedCalibratedValid = false;
 #ifdef ENABLE_CAB
 		CabConvolver* cabConvolver = nullptr;
 		std::string cabPath;
@@ -167,6 +174,7 @@ namespace NAM {
 			LV2_URID cab_Path;
 #endif
 		};
+
 
 		URIs uris = {};
 
