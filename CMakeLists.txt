@@ -70,7 +70,7 @@ if (ENABLE_CAB)
 	set(CAB_PARAM_DECL "
 <${NAM_LV2_ID}#cab>
 	a lv2:Parameter;
-	mod:fileTypes \"wav\";
+	mod:fileTypes \"cabsim\";
 	rdfs:label \"Cab IR\";
 	rdfs:range atom:Path.
 ")
