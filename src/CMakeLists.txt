@@ -40,6 +40,28 @@ set(NA_SOURCES ../deps/NeuralAudio/NeuralAudio/NeuralModel.h)
 
 add_library(neural_amp_modeler_t SHARED ${SOURCES} ${NA_SOURCES})
 
+option(ENABLE_CAB "Enable cab IR convolution block (after the NAM)" ON)
+
+if (ENABLE_CAB)
+	add_definitions(-DENABLE_CAB)
+	message(STATUS "Cab IR block enabled")
+
+	target_sources(neural_amp_modeler_t PRIVATE
+		3rdparty/FFTConvolver/AudioFFT.cpp
+		3rdparty/FFTConvolver/FFTConvolver.cpp
+		3rdparty/FFTConvolver/TwoStageFFTConvolver.cpp
+		3rdparty/FFTConvolver/Utilities.cpp
+		cab_convolver.cpp)
+
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/cab_ports.ttl.in" CAB_PORTS)
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/cab_knobs.ttl.in" CAB_KNOBS)
+else()
+	message(STATUS "Cab IR block NOT enabled")
+
+	set(CAB_PORTS "")
+	set(CAB_KNOBS "")
+endif (ENABLE_CAB)
+
 target_include_directories(neural_amp_modeler_t PUBLIC ../deps/NeuralAudio)
 target_include_directories(neural_amp_modeler_t PUBLIC ../deps/lv2/include)
 target_include_directories(neural_amp_modeler_t PUBLIC ../deps/denormal)
@@ -63,6 +85,67 @@ if (SMART_BYPASS_ENABLED)
 else()
 	message(STATUS "Smart Bypass NOT enabled")
 endif (SMART_BYPASS_ENABLED)
+
+option(ENABLE_DC_BLOCK "Enable DC blocker at the end of the chain" ON)
+
+if (ENABLE_DC_BLOCK)
+	add_definitions(-DENABLE_DC_BLOCK)
+	message(STATUS "DC blocker enabled")
+else()
+	message(STATUS "DC blocker NOT enabled")
+endif (ENABLE_DC_BLOCK)
+
+option(ENABLE_EQ "Enable 3-band EQ at the end of the chain" ON)
+
+# quality port index: 6 (control 0, notify 1, in 2, out 3, input_level 4,
+# output_level 5), the cab/EQ ports are appended after it
+set(QUALITY_INDEX 6)
+
+if (ENABLE_CAB)
+	math(EXPR QUALITY_INDEX "${QUALITY_INDEX} + 1")
+endif()
+
+if (ENABLE_EQ)
+	add_definitions(-DENABLE_EQ)
+	message(STATUS "EQ enabled")
+
+	# the EQ port indices depend on whether the cab enable port is present
+	set(EQ_BASE 6)
+
+	if (ENABLE_CAB)
+		math(EXPR EQ_BASE "${EQ_BASE} + 1")
+	endif()
+
+	math(EXPR EQ_I1 "${EQ_BASE} + 1")
+	math(EXPR EQ_I2 "${EQ_BASE} + 2")
+
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/eq_ports.ttl.in" EQ_PORTS)
+	file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../resources/eq_knobs.ttl.in" EQ_KNOBS)
+
+	string(REPLACE "@EQ_I0@" "${EQ_BASE}" EQ_PORTS "${EQ_PORTS}")
+	string(REPLACE "@EQ_I1@" "${EQ_I1}" EQ_PORTS "${EQ_PORTS}")
+	string(REPLACE "@EQ_I2@" "${EQ_I2}" EQ_PORTS "${EQ_PORTS}")
+	string(REPLACE "@EQ_I0@" "${EQ_BASE}" EQ_KNOBS "${EQ_KNOBS}")
+	string(REPLACE "@EQ_I1@" "${EQ_I1}" EQ_KNOBS "${EQ_KNOBS}")
+	string(REPLACE "@EQ_I2@" "${EQ_I2}" EQ_KNOBS "${EQ_KNOBS}")
+
+	math(EXPR QUALITY_INDEX "${QUALITY_INDEX} + 3")
+else()
+	message(STATUS "EQ NOT enabled")
+
+	set(EQ_PORTS "")
+	set(EQ_KNOBS "")
+endif (ENABLE_EQ)
+
+# Export the ttl template variables to the parent scope: the root
+# CMakeLists.txt runs configure_file() on the ttl templates, and normal
+# variables set here (in the add_subdirectory() child scope) are not
+# visible there.
+set(EQ_PORTS "${EQ_PORTS}" PARENT_SCOPE)
+set(EQ_KNOBS "${EQ_KNOBS}" PARENT_SCOPE)
+set(CAB_PORTS "${CAB_PORTS}" PARENT_SCOPE)
+set(CAB_KNOBS "${CAB_KNOBS}" PARENT_SCOPE)
+set(QUALITY_INDEX "${QUALITY_INDEX}" PARENT_SCOPE)
 
 set_target_properties(neural_amp_modeler_t
 	PROPERTIES

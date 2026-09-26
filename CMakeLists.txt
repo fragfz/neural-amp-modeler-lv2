@@ -23,6 +23,24 @@ set(NAM_LV2_ID http://github.com/fragfz/neural-amp-modeler-lv2-t)
 
 add_subdirectory(src)
 
+# Fallbacks: if src/CMakeLists.txt did not define the cab/EQ template variables
+# (block disabled), emit a consistent block-less bundle instead of a broken
+# ttl with unexpanded @...@ variables.
+if (NOT DEFINED CAB_PORTS)
+	set(CAB_PORTS "")
+endif()
+if (NOT DEFINED CAB_KNOBS)
+	set(CAB_KNOBS "")
+endif()
+if (NOT DEFINED EQ_PORTS)
+	set(EQ_PORTS "")
+endif()
+if (NOT DEFINED EQ_KNOBS)
+	set(EQ_KNOBS "")
+endif()
+if (NOT DEFINED QUALITY_INDEX)
+	set(QUALITY_INDEX 6)
+endif()
 
 # create neural_amp_modeler_t.lv2
 add_custom_target(copy_binaries ALL
@@ -30,9 +48,9 @@ add_custom_target(copy_binaries ALL
 	DEPENDS neural_amp_modeler_t
 )
 
-file(COPY resources/modgui.ttl DESTINATION neural_amp_modeler_t.lv2)
 file(COPY resources/modgui DESTINATION neural_amp_modeler_t.lv2)
 
+configure_file(resources/modgui.ttl neural_amp_modeler_t.lv2/modgui.ttl @ONLY)
 configure_file(resources/manifest.ttl.in neural_amp_modeler_t.lv2/manifest.ttl)
 configure_file(resources/neural_amp_modeler.ttl.in neural_amp_modeler_t.lv2/neural_amp_modeler_t.ttl)
 
@@ -51,7 +69,7 @@ set(CPACK_DEBIAN_PACKAGE_CONTROL_STRICT_PERMISSION TRUE)
 set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
-set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+set(CPACK_DEBIAN_PACKAGE_FILE_NAME DEB-DEFAULT)
 set (CPACK_STRIP_FILES ON)
 
 include(CPack)

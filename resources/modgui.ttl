@@ -1,7 +1,7 @@
 @prefix modgui: <http://moddevices.com/ns/modgui#>.
 @prefix lv2:    <http://lv2plug.in/ns/lv2core#>.
 
-<http://github.com/fragfz/neural-amp-modeler-lv2-t>
+<@NAM_LV2_ID@>
     modgui:gui [
         modgui:resourcesDirectory <modgui>;
         modgui:iconTemplate <modgui/icon-nam.html>;
@@ -17,5 +17,11 @@
             lv2:index 1;
             lv2:symbol "output_level";
             lv2:name "Output Lvl";
+        ], [
+            lv2:index 2;
+            lv2:symbol "quality_scale";
+            lv2:name "Quality";
+@CAB_KNOBS@
+@EQ_KNOBS@
         ];
     ].
