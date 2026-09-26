@@ -25,6 +25,11 @@ namespace NAM {
 	{
 		// prevent allocations on the audio thread
 		currentModelPath.reserve(MAX_FILE_NAME + 1);
+#ifdef ENABLE_CAB
+		// work_response() (RT thread) assigns cabPath when a new IR is swapped in;
+		// reserve it here so that assignment never allocates
+		cabPath.reserve(MAX_FILE_NAME + 1);
+#endif
 
 		scratch.reserve(maxBufferSize);
 		scratch2.reserve(maxBufferSize);
@@ -84,6 +89,7 @@ namespace NAM {
 			else if (std::string(features[i]->URI) == std::string(LV2_LOG__log))
 				logger.log = static_cast<LV2_Log_Log*>(features[i]->data);
 			else if (std::string(features[i]->URI) == 
+
 std::string(LV2_OPTIONS__options))
 				options = static_cast<LV2_Options_Option*>(features[i]->data);
 		}
@@ -150,7 +156,8 @@ std::string(LV2_OPTIONS__options))
 					// load model from path
 					const size_t pathlen = strlen(msg->path);
 
-					if (pathlen == 0 ||
+					if (pathlen == 0 |
+|
  pathlen >= MAX_FILE_NAME)
 					{
 						// avoid logging an error on an empty path.
@@ -243,7 +250,8 @@ std::string(LV2_OPTIONS__options))
 	}
 
 	// runs on RT, right after process(), must not block or [de]allocate memory
-	LV2_Worker_Status Plugin::work_re
+	LV2_Worker_Status Plugin::work_
+re
 sponse(LV2_Handle instance, uint32_t size,	const void* data)
 	{
 		switch (*(const LV2WorkType*)data)
@@ -323,7 +331,8 @@ sponse(LV2_Handle instance, uint32_t size,	const void* data)
 		}
 	}
 
-	void 
+	vo
+id 
 Plugin::process(uint32_t n_samples) noexcept
 	{
 		lv2_atom_forge_set_buffer(&atom_forge, (uint8_t*)ports.notify, ports.notify->atom.size);
@@ -388,7 +397,8 @@ Plugin::process(uint32_t n_samples) noexcept
 		{
 			if (*(ports.quality_scale) != currentModel->GetQualityScaleFactor())
 			{
-				cu
+		
+		cu
 rrentModel->SetQualityScaleFactor(*(ports.quality_scale));
 			}
 
@@ -401,7 +411,7 @@ rrentModel->SetQualityScaleFactor(*(ports.quality_scale));
 			{
 				for (unsigned int i = 0; i < n_samples; i++)
 				{
-					if (abs(ports.audio_in[i]) <= bypassThresholdLinear)
+					if (fabsf(ports.audio_in[i]) <= bypassThresholdLinear)
 					{
 						silentSamples++;
 					}
@@ -470,7 +480,8 @@ rrentModel->SetQualityScaleFactor(*(ports.quality_scale));
 			if (*(ports.out_calibrated) > 0.5f)
 			{
 				// "Out Calibrated" on: use the model's output_level_dbu calibration
-				// (true analog capture output level) instead of loudness normalization,
+				// (true analog capture output lev
+el) instead of loudness normalization,
 				// like the tone3000 / official NAM plugin "Calibrated" output mode:
 				// adjustment = model_output_level_dBu - interface_dBu.
 				// The value depends only on the loaded model, so parse it once per
@@ -537,7 +548,8 @@ rrentModel->SetQualityScaleFactor(*(ports.quality_scale));
 		{
 			if (*(ports.cab_enable) > 0.5f)
 			{
-				// process through a staging buffer (the convolver must not run in place)
+				// process through a 
+staging buffer (the convolver must not run in place)
 				memcpy(scratch.data(), ports.audio_out, n_samples * sizeof(float));
 
 				cabConvolver->Process(scratch.data(), ports.audio_out, n_samples);
@@ -619,7 +631,8 @@ s);
 		return LV2_OPTIONS_SUCCESS;
 	}
 
-	LV2_State_Status Plugin::save(LV2_Handle instance, LV2_State_Store_Function store, LV2_State_Handle handle, 
+	LV2_State_Status Plugi
+n::save(LV2_Handle instance, LV2_State_Store_Function store, LV2_State_Handle handle, 
 		uint32_t flags, const LV2_Feature* const* features)
 	{
 		auto nam = static_cast<NAM::Plugin*>(instance);
@@ -691,7 +704,8 @@ v2_log_error(&nam->logger, "LV2_STATE__mapPath unsupported by host\n");
 		return LV2_STATE_SUCCESS;
 	}
 
-	LV2_State_Status Plugin::restore(LV2_Handle instance, LV2_State_Retrieve_Function retrieve, LV2_State_Handle handle, 
+	LV2_State_Status Plugin::restore(LV2_Hand
+le instance, LV2_State_Retrieve_Function retrieve, LV2_State_Handle handle, 
 		uint32_t flags, const LV2_Feature* const* features)
 	{
 		auto nam = static_cast<NAM::Plugin*>(instance);
@@ -765,7 +779,8 @@ v2_log_error(&nam->logger, "LV2_STATE__mapPath unsupported by host\n");
 #ifdef ENABLE_CAB
 		const void* cabValue = retrieve(handle, nam->uris.cab_Path, &size, &type, &valflags);
 
-		if (cabValue != nullptr && type == nam->uris.atom_Path)
+		if (cabValue 
+!= nullptr && type == nam->uris.atom_Path)
 		{
 			LV2_State_Map_Path* map_path = (LV2_State_Map_Path*)lv2_features_data(features, LV2_STATE__mapPath);
 
@@ -840,7 +855,8 @@ pathLen >= MAX_FILE_NAME)
 		lv2_atom_forge_frame_time(&atom_forge, 0);
 		lv2_atom_forge_object(&atom_forge, &frame, 0, uris.patch_Set);
 
-		lv2_atom_forge_key(&atom_forge, uris.patch_property);
+		lv2_atom_forge_key(&atom_forge, uris.patc
+h_property);
 		lv2_atom_forge_urid(&atom_forge, uris.cab_Path);
 		lv2_atom_forge_key(&atom_forge, uris.patch_value);
 		lv2_atom_forge_path(&atom_forge, cabPath.c_str(), (uint32_t)cabPath.length() + 1);
