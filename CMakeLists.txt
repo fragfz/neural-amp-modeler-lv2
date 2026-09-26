@@ -19,24 +19,24 @@ else()
 	message(FATAL_ERROR "Unrecognized Platform!")
 endif()
 
-set(NAM_LV2_ID http://github.com/mikeoliphant/neural-amp-modeler-lv2)
+set(NAM_LV2_ID http://github.com/fragfz/neural-amp-modeler-lv2-t)
 
 add_subdirectory(src)
 
 
-# create neural_amp_modeler.lv2
+# create neural_amp_modeler_t.lv2
 add_custom_target(copy_binaries ALL
-	${CMAKE_COMMAND} -E copy "$<TARGET_FILE:neural_amp_modeler>" neural_amp_modeler.lv2/
-	DEPENDS neural_amp_modeler
+	${CMAKE_COMMAND} -E copy "$<TARGET_FILE:neural_amp_modeler_t>" neural_amp_modeler_t.lv2/
+	DEPENDS neural_amp_modeler_t
 )
 
-file(COPY resources/modgui.ttl DESTINATION neural_amp_modeler.lv2)
-file(COPY resources/modgui DESTINATION neural_amp_modeler.lv2)
+file(COPY resources/modgui.ttl DESTINATION neural_amp_modeler_t.lv2)
+file(COPY resources/modgui DESTINATION neural_amp_modeler_t.lv2)
 
-configure_file(resources/manifest.ttl.in neural_amp_modeler.lv2/manifest.ttl)
-configure_file(resources/neural_amp_modeler.ttl.in neural_amp_modeler.lv2/neural_amp_modeler.ttl)
+configure_file(resources/manifest.ttl.in neural_amp_modeler_t.lv2/manifest.ttl)
+configure_file(resources/neural_amp_modeler.ttl.in neural_amp_modeler_t.lv2/neural_amp_modeler_t.ttl)
 
-install (DIRECTORY ${CMAKE_BINARY_DIR}/neural_amp_modeler.lv2
+install (DIRECTORY ${CMAKE_BINARY_DIR}/neural_amp_modeler_t.lv2
        DESTINATION ${LIB_INSTALL_DIR}/lv2
 )
 

@@ -23,7 +23,7 @@
 
 #include <NeuralAudio/NeuralModel.h>
 
-#define PlUGIN_URI "http://github.com/mikeoliphant/neural-amp-modeler-lv2"
+#define PlUGIN_URI "http://github.com/fragfz/neural-amp-modeler-lv2-t"
 #define MODEL_URI PlUGIN_URI "#model"
 
 namespace NAM {
