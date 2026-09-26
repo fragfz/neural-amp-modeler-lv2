@@ -1,12 +1,7 @@
 @prefix modgui: <http://moddevices.com/ns/modgui#>.
 @prefix lv2:    <http://lv2plug.in/ns/lv2core#>.
 
-# GUI description for the TCDE build (cab + DC blocker + EQ). This is a
-# static file on purpose: the mod-plugin-builder recipe installs it straight
-# from the source tree, so it must not contain any @configure_file@
-# placeholders. Only the basic level/quality knobs are exposed; the cab,
-# EQ and out_calibrated parameters are not shown in the MOD GUI.
-<http://github.com/fragfz/neural-amp-modeler-lv2_tcde>
+<@NAM_LV2_ID@>
     modgui:gui [
         modgui:resourcesDirectory <modgui>;
         modgui:iconTemplate <modgui/icon-nam.html>;
