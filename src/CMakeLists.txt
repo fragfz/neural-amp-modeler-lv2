@@ -56,6 +56,14 @@ set(SOURCES nam_lv2.cpp
 
 if (ENABLE_CAB)
 	list(APPEND SOURCES cab_convolver.cpp cab_convolver.h)
+	# the cab convolver derives from fftconvolver::TwoStageFFTConvolver; its
+	# implementation (and thus the vtable/typeinfo symbols) lives in these
+	# .cpp files and must be compiled into the plugin binary
+	list(APPEND SOURCES
+		3rdparty/FFTConvolver/AudioFFT.cpp
+		3rdparty/FFTConvolver/FFTConvolver.cpp
+		3rdparty/FFTConvolver/TwoStageFFTConvolver.cpp
+		3rdparty/FFTConvolver/Utilities.cpp)
 endif()
 
 if (ENABLE_EQ)
@@ -73,7 +81,8 @@ target_include_directories(${BINARY_NAME} PUBLIC ../deps/denormal)
 
 target_link_libraries(${BINARY_NAME} PRIVATE NeuralAudio)
 
-# inject the full plugin URI (follows the dynamic name suffix) into the code
+# inject
+ the full plugin URI (follows the dynamic name suffix) into the code
 target_compile_definitions(${BINARY_NAME} PRIVATE "PLUGIN_URI=\"${NAM_LV2_ID}\"")
 
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${SOURCES})
