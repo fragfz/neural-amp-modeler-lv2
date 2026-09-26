@@ -47,6 +47,9 @@ string(TOLOWER "${NAM_NAME_SUFFIX}" NAM_NAME_SUFFIX_LOWER)
 set(NAM_LV2_ID http://github.com/fragfz/neural-amp-modeler-lv2${NAM_NAME_SUFFIX_LOWER})
 set(BINARY_NAME neural_amp_modeler${NAM_NAME_SUFFIX_LOWER})
 
+# human-readable variant suffix for the plugin display name (space, no underscore)
+string(REPLACE "_" " " NAM_NAME_DISPLAY "${NAM_NAME_SUFFIX}")
+
 add_subdirectory(src)
 
 # --- TTL fragment substitution for the optional DSP blocks ------------------
