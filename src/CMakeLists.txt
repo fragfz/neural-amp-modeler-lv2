@@ -32,9 +32,36 @@ endif ()
 
 add_subdirectory(../deps/NeuralAudio NeuralAudio)
 
+# DSP block options (declared in the top-level CMakeLists, before add_subdirectory,
+# because the plugin name/URI suffix depends on them). Here they select the code
+# that actually gets compiled and the sources that go into the binary.
+if (ENABLE_CAB)
+	add_definitions(-DENABLE_CAB)
+	message(STATUS "Cab IR block enabled")
+endif()
+
+if (ENABLE_DC_BLOCK)
+	add_definitions(-DENABLE_DC_BLOCK)
+	message(STATUS "DC blocker enabled")
+endif()
+
+if (ENABLE_EQ)
+	add_definitions(-DENABLE_EQ)
+	message(STATUS "3-band EQ enabled")
+endif()
+
 set(SOURCES nam_lv2.cpp
 	nam_plugin.cpp
 	nam_plugin.h)
+
+if (ENABLE_CAB)
+	list(APPEND SOURCES cab_convolver.cpp cab_convolver.h)
+endif()
+
+if (ENABLE_EQ)
+	list(APPEND SOURCES eq.h)
+endif()
+
 
 set(NA_SOURCES ../deps/NeuralAudio/NeuralAudio/NeuralModel.h)
 

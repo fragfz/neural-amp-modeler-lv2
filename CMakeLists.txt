@@ -49,6 +49,50 @@ set(BINARY_NAME neural_amp_modeler${NAM_NAME_SUFFIX_LOWER})
 
 add_subdirectory(src)
 
+# --- TTL fragment substitution for the optional DSP blocks ------------------
+# Port index layout (append-only; must match NAM::Plugin::Ports in nam_plugin.h):
+#   0 control, 1 notify, 2 input, 3 output, 4 input_level, 5 output_level,
+#   6 quality_scale, 7 cab_enable (cab), 8/9/10 eq_bass/mid/treble (eq).
+set(CAB_PORTS "")
+set(CAB_KNOBS "")
+set(CAB_PARAM_DECL "")
+set(CAB_WRITABLE "")
+set(EQ_PORTS "")
+set(EQ_KNOBS "")
+
+if (ENABLE_CAB)
+	file(READ "${CMAKE_SOURCE_DIR}/resources/cab_ports.ttl.in" CAB_PORTS)
+	file(READ "${CMAKE_SOURCE_DIR}/resources/cab_knobs.ttl.in" CAB_KNOBS)
+
+	set(CAB_PARAM_DECL "
+<${NAM_LV2_ID}#cab>
+	a lv2:Parameter;
+	mod:fileTypes \"wav\";
+	rdfs:label \"Cab IR\";
+	rdfs:range atom:Path.
+")
+
+	set(CAB_WRITABLE "
+	patch:writable <${NAM_LV2_ID}#cab>;")
+endif()
+
+if (ENABLE_EQ)
+	set(EQ_BASE 7)
+
+	if (ENABLE_CAB)
+		set(EQ_BASE 8)
+	endif()
+
+	set(EQ_I0 ${EQ_BASE})
+	math(EXPR EQ_I1 "${EQ_BASE} + 1")
+	math(EXPR EQ_I2 "${EQ_BASE} + 2")
+
+	file(READ "${CMAKE_SOURCE_DIR}/resources/eq_ports.ttl.in" EQ_PORTS_RAW)
+	file(READ "${CMAKE_SOURCE_DIR}/resources/eq_knobs.ttl.in" EQ_KNOBS_RAW)
+
+	string(CONFIGURE "${EQ_PORTS_RAW}" EQ_PORTS @ONLY)
+	string(CONFIGURE "${EQ_KNOBS_RAW}" EQ_KNOBS @ONLY)
+endif()
 
 # create ${BINARY_NAME}.lv2
 add_custom_target(copy_binaries ALL
@@ -56,9 +100,9 @@ add_custom_target(copy_binaries ALL
 	DEPENDS ${BINARY_NAME}
 )
 
-file(COPY resources/modgui.ttl DESTINATION ${BINARY_NAME}.lv2)
 file(COPY resources/modgui DESTINATION ${BINARY_NAME}.lv2)
 
+configure_file(resources/modgui.ttl ${BINARY_NAME}.lv2/modgui.ttl @ONLY)
 configure_file(resources/manifest.ttl.in ${BINARY_NAME}.lv2/manifest.ttl)
 configure_file(resources/neural_amp_modeler.ttl.in ${BINARY_NAME}.lv2/${BINARY_NAME}.ttl)
 

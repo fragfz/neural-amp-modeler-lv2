@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <random>
+#include <string>
 #include <string_view>
+#include <vector>
 
 // LV2
 #include <lv2/core/lv2.h>
@@ -23,6 +25,10 @@
 
 #include <NeuralAudio/NeuralModel.h>
 
+#ifdef ENABLE_EQ
+#include "eq.h"
+#endif
+
 // Full plugin URI is injected by CMake (-DPLUGIN_URI) so it follows the
 // dynamically computed name suffix (_T + C/D/E per enabled DSP block).
 // The fallback keeps standalone builds working.
@@ -36,10 +42,15 @@
 namespace NAM {
 	static constexpr unsigned int MAX_FILE_NAME = 1024;
 
+	class CabConvolver;
+
 	enum LV2WorkType {
 		kWorkTypeLoad,
 		kWorkTypeSwitch,
-		kWorkTypeFree
+		kWorkTypeFree,
+		kWorkTypeLoadCab,
+		kWorkTypeSwitchCab,
+		kWorkTypeFreeCab
 	};
 
 	struct LV2LoadModelMsg {
@@ -58,6 +69,22 @@ namespace NAM {
 		NeuralAudio::NeuralModel* model;
 	};
 
+	struct LV2LoadCabMsg {
+		LV2WorkType type;
+		char path[MAX_FILE_NAME];
+	};
+
+	struct LV2SwitchCabMsg {
+		LV2WorkType type;
+		char path[MAX_FILE_NAME];
+		CabConvolver* convolver;
+	};
+
+	struct LV2FreeCabMsg {
+		LV2WorkType type;
+		CabConvolver* convolver;
+	};
+
 	class Plugin {
 	public:
 		struct Ports {
@@ -68,6 +95,14 @@ namespace NAM {
 			float* input_level;
 			float* output_level;
 			float* quality_scale;
+#ifdef ENABLE_CAB
+			float* cab_enable;
+#endif
+#ifdef ENABLE_EQ
+			float* eq_bass;
+			float* eq_mid;
+			float* eq_treble;
+#endif
 		};
 
 		Ports ports = {};
@@ -81,6 +116,10 @@ namespace NAM {
 		NeuralAudio::NeuralModelLoader loader;
 		NeuralAudio::NeuralModel* currentModel = nullptr;
 		std::string currentModelPath;
+#ifdef ENABLE_CAB
+		CabConvolver* cabConvolver = nullptr;
+		std::string cabPath;
+#endif
 		float prevDCInput = 0;
 		float prevDCOutput = 0;
 
@@ -93,6 +132,9 @@ namespace NAM {
 		void process(uint32_t n_samples) noexcept;
 
 		void write_current_path();
+#ifdef ENABLE_CAB
+		void write_cab_path();
+#endif
 
 		static uint32_t options_get(LV2_Handle instance, LV2_Options_Option* options);
 		static uint32_t options_set(LV2_Handle instance, const LV2_Options_Option* options);
@@ -120,6 +162,9 @@ namespace NAM {
 			LV2_URID patch_value;
 			LV2_URID units_frame;
 			LV2_URID model_Path;
+#ifdef ENABLE_CAB
+			LV2_URID cab_Path;
+#endif
 		};
 
 		URIs uris = {};
@@ -133,5 +178,19 @@ namespace NAM {
 		float bypassThresholdLinear = 0;
 		uint32_t silentSamples = 0;
 		bool smartBypassed = true;
+
+		// staging buffers (cab convolver must not run in place; grown off-thread only)
+		std::vector<float> scratch;
+		std::vector<float> scratch2;
+
+		// DC blocker coefficient (y[n] = x[n] - x[n-1] + R * y[n-1])
+		float dcCoefficient = 1.0f;
+
+#ifdef ENABLE_EQ
+		Eq eq;
+		float lastEqBass = 0;
+		float lastEqMid = 0;
+		float lastEqTreble = 0;
+#endif
 	};
 }
