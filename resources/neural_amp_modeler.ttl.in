@@ -112,4 +112,14 @@ A large collection of models is available at https://www.tone3000.com
 		lv2:maximum 1.0;
 @CAB_PORTS@
 @EQ_PORTS@
+	], [
+		a lv2:ControlPort, lv2:InputPort;
+		lv2:index @OUT_CAL_INDEX@;
+		lv2:symbol "out_calibrated";
+		lv2:name "Out Calibrated";
+		lv2:default 0.0;
+		lv2:minimum 0.0;
+		lv2:maximum 1.0;
+		lv2:portProperty lv2:toggled;
+		rdfs:comment "When on, output level follows the model's output_level_dbu calibration (true capture output level, for calibrated gain staging into the next NAM) instead of loudness normalization.";
 	].

@@ -103,6 +103,7 @@ namespace NAM {
 			float* eq_mid;
 			float* eq_treble;
 #endif
+			float* out_calibrated;
 		};
 
 		Ports ports = {};

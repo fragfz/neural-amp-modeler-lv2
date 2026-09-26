@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <utility>
 #include <cassert>
 
@@ -460,6 +461,27 @@ namespace NAM {
 			currentModel->Process(ports.audio_out, ports.audio_out, n_samples);
 
 			modelLoudnessAdjustmentDB = currentModel->GetRecommendedOutputDBAdjustment();
+
+			if (*(ports.out_calibrated) > 0.5f)
+			{
+				// "Out Calibrated" on: use the model's output_level_dbu calibration
+				// (true analog capture output level) instead of loudness normalization,
+				// like the tone3000 / official NAM plugin "Calibrated" output mode:
+				// adjustment = model_output_level_dBu - interface_dBu.
+				const std::string modelOutputLevelDbu = currentModel->GetMetadata("output_level_dbu");
+
+				if (!modelOutputLevelDbu.empty())
+				{
+					char* parseEnd = nullptr;
+
+					const float outputLevelDbu = strtof(modelOutputLevelDbu.c_str(), &parseEnd);
+
+					if (parseEnd != nullptr && *parseEnd == '\0' && outputLevelDbu > -60.0f && outputLevelDbu < 60.0f)
+					{
+						modelLoudnessAdjustmentDB = outputLevelDbu - currentModel->GetAudioInputLevelDBu();
+					}
+				}
+			}
 		}
 
 		// Convert output level from db

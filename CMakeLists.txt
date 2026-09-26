@@ -94,6 +94,19 @@ if (ENABLE_EQ)
 	string(CONFIGURE "${EQ_KNOBS_RAW}" EQ_KNOBS @ONLY)
 endif()
 
+# out_calibrated comes after all optional DSP block ports (append-only)
+set(OUT_CAL_INDEX 7)
+
+if (ENABLE_CAB)
+	math(EXPR OUT_CAL_INDEX "${OUT_CAL_INDEX} + 1")
+endif()
+
+if (ENABLE_EQ)
+	math(EXPR OUT_CAL_INDEX "${OUT_CAL_INDEX} + 3")
+endif()
+
+set(OUT_KNOB_INDEX ${OUT_CAL_INDEX})
+
 # create ${BINARY_NAME}.lv2
 add_custom_target(copy_binaries ALL
 	${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${BINARY_NAME}>" ${BINARY_NAME}.lv2/
