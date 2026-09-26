@@ -14,6 +14,10 @@ namespace NAM {
 	static constexpr size_t kHeadBlockSize = 256;
 	static constexpr size_t kTailBlockSize = 4096;
 
+	// IRs up to this many samples count as "short" (cab-like) and get the
+	// -18 dB output pad (1 second at 48 kHz, as in the tone3000 plugin)
+	static constexpr size_t kShortIrMaxSamples = 48000;
+
 	CabConvolver* CabConvolver::Create(const std::vector<float>& ir)
 	{
 		if (ir.empty())
@@ -329,6 +333,35 @@ namespace NAM {
 
 				ir[i] = (1.0f - frac) * mono[i0] + frac * mono[i1];
 			}
+		}
+
+		// Normalize the IR to unit energy (always on, like the tone3000 plugin's
+		// IR blocks): every cab IR then passes a signal at consistent RMS level,
+		// regardless of how hot the source WAV was captured.
+		{
+			double energy = 0.0;
+
+			for (const float s : ir)
+				energy += (double)s * (double)s;
+
+			if (energy > 0.0)
+			{
+				const float normGain = (float)(1.0 / sqrt(energy));
+
+				for (float& s : ir)
+					s *= normGain;
+			}
+		}
+
+		// Short (cab-like) IRs additionally get a -18 dB output pad; long IRs
+		// (reverb tails and such, > 1 second) keep the normalized level.
+		// Same threshold as tone3000's kShortIrMaxBaseSamples (1 s at 48 kHz).
+		if (ir.size() <= kShortIrMaxSamples)
+		{
+			const float padGain = (float)pow(10.0, -18.0 / 20.0);
+
+			for (float& s : ir)
+				s *= padGain;
 		}
 
 		return !ir.empty();
