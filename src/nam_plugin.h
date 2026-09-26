@@ -96,8 +96,7 @@ namespace NAM {
 			float* output_level;
 			float* quality_scale;
 #ifdef ENABLE_CAB
-			flo
-at* cab_enable;
+			float* cab_enable;
 #endif
 #ifdef ENABLE_EQ
 			float* eq_bass;
@@ -174,7 +173,6 @@ at* cab_enable;
 			LV2_URID cab_Path;
 #endif
 		};
-
 
 		URIs uris = {};
 
