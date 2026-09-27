@@ -20,6 +20,7 @@ namespace NAM {
 			UpdateBass();
 			UpdateMid();
 			UpdateTreble();
+			UpdateActivity();
 		}
 
 		void SetBass(float db)
@@ -27,6 +28,7 @@ namespace NAM {
 			bassDb_ = db;
 
 			UpdateBass();
+			UpdateActivity();
 		}
 
 		void SetMid(float db)
@@ -34,6 +36,7 @@ namespace NAM {
 			midDb_ = db;
 
 			UpdateMid();
+			UpdateActivity();
 		}
 
 		void SetTreble(float db)
@@ -41,10 +44,16 @@ namespace NAM {
 			trebleDb_ = db;
 
 			UpdateTreble();
+			UpdateActivity();
 		}
 
 		float Process(float in)
 		{
+			// flat-skip: when all knobs are ~0 dB the EQ is a bit-exact wire
+			// (same optimization as the tone3000 plugin's BlockEq)
+			if (!anyBandActive_)
+				return in;
+
 			return (float)treble_(mid_(bass_((double)in)));
 		}
 
@@ -53,6 +62,11 @@ namespace NAM {
 		{
 			double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
 			double x1 = 0.0, x2 = 0.0, y1 = 0.0, y2 = 0.0;
+
+			void ResetState()
+			{
+				x1 = x2 = y1 = y2 = 0.0;
+			}
 
 			double operator()(double x)
 			{
@@ -124,10 +138,33 @@ namespace NAM {
 		void UpdateMid() { Peaking(mid_, sampleRate_, 900.0, (double)midDb_, 1.0); }
 		void UpdateTreble() { HighShelf(treble_, sampleRate_, 2500.0, (double)trebleDb_); }
 
+		// a band counts as active only when its knob is meaningfully off 0 dB;
+		// while no band is active the EQ is bypassed entirely (flat-skip).
+		// Coming back from the skip path the biquad state is stale, so clear it
+		// to keep the first processed block from ringing with old history.
+		void UpdateActivity()
+		{
+			const bool active = (fabs(bassDb_) >= kFlatThresholdDb)
+				|| (fabs(midDb_) >= kFlatThresholdDb)
+				|| (fabs(trebleDb_) >= kFlatThresholdDb);
+
+			if (active && !anyBandActive_)
+			{
+				bass_.ResetState();
+				mid_.ResetState();
+				treble_.ResetState();
+			}
+
+			anyBandActive_ = active;
+		}
+
+		static constexpr float kFlatThresholdDb = 0.05f;
+
 		float sampleRate_ = 48000.0f;
 		float bassDb_ = 0.0f;
 		float midDb_ = 0.0f;
 		float trebleDb_ = 0.0f;
+		bool anyBandActive_ = false;
 
 		Biquad bass_;
 		Biquad mid_;
