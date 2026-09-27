@@ -76,11 +76,13 @@ namespace NAM {
 			const double cw = cos(w0);
 			const double s2a = 2.0 * sqrt(A) * alpha;
 
-			filter.b0 = A * ((A + 1.0) - (A - 1.0) * cw + s2a);
-			filter.b1 = 2.0 * A * ((A - 1.0) - (A + 1.0) * cw);
-			filter.b2 = A * ((A + 1.0) - (A - 1.0) * cw - s2a);
-			filter.a1 = 2.0 * ((A - 1.0) + (A + 1.0) * cw);
-			filter.a2 = (A + 1.0) + (A - 1.0) * cw - s2a;
+			const double a0 = (A + 1.0) + (A - 1.0) * cw + s2a;
+
+			filter.b0 = A * ((A + 1.0) - (A - 1.0) * cw + s2a) / a0;
+			filter.b1 = 2.0 * A * ((A - 1.0) - (A + 1.0) * cw) / a0;
+			filter.b2 = A * ((A + 1.0) - (A - 1.0) * cw - s2a) / a0;
+			filter.a1 = -2.0 * ((A - 1.0) + (A + 1.0) * cw) / a0;
+			filter.a2 = ((A + 1.0) + (A - 1.0) * cw - s2a) / a0;
 		}
 
 		static void Peaking(Biquad& filter, double sampleRate, double freq, double dbGain, double q)
@@ -91,11 +93,13 @@ namespace NAM {
 			const double alpha = sin(w0) / (2.0 * q);
 			const double cw = cos(w0);
 
-			filter.b0 = 1.0 + alpha * A;
-			filter.b1 = -2.0 * cw;
-			filter.b2 = 1.0 - alpha * A;
-			filter.a1 = 2.0 * cw;
-			filter.a2 = 1.0 - alpha / A;
+			const double a0 = 1.0 + alpha / A;
+
+			filter.b0 = (1.0 + alpha * A) / a0;
+			filter.b1 = -2.0 * cw / a0;
+			filter.b2 = (1.0 - alpha * A) / a0;
+			filter.a1 = -2.0 * cw / a0;
+			filter.a2 = (1.0 - alpha / A) / a0;
 		}
 
 		static void HighShelf(Biquad& filter, double sampleRate, double freq, double dbGain)
@@ -107,11 +111,13 @@ namespace NAM {
 			const double cw = cos(w0);
 			const double s2a = 2.0 * sqrt(A) * alpha;
 
-			filter.b0 = A * ((A + 1.0) + (A - 1.0) * cw + s2a);
-			filter.b1 = -2.0 * A * ((A - 1.0) + (A + 1.0) * cw);
-			filter.b2 = A * ((A + 1.0) + (A - 1.0) * cw - s2a);
-			filter.a1 = 2.0 * ((A - 1.0) - (A + 1.0) * cw);
-			filter.a2 = (A + 1.0) - (A - 1.0) * cw - s2a;
+			const double a0 = (A + 1.0) - (A - 1.0) * cw + s2a;
+
+			filter.b0 = A * ((A + 1.0) + (A - 1.0) * cw + s2a) / a0;
+			filter.b1 = -2.0 * A * ((A - 1.0) + (A + 1.0) * cw) / a0;
+			filter.b2 = A * ((A + 1.0) + (A - 1.0) * cw - s2a) / a0;
+			filter.a1 = 2.0 * ((A - 1.0) - (A + 1.0) * cw) / a0;
+			filter.a2 = ((A + 1.0) - (A - 1.0) * cw - s2a) / a0;
 		}
 
 		void UpdateBass() { LowShelf(bass_, sampleRate_, 150.0, (double)bassDb_); }
